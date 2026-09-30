@@ -1,0 +1,21 @@
+{
+  "name": "dee-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Business management app API — authentication foundation",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/db/migrate.js",
+    "test": "node --test tests/auth.test.js tests/session.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "zod": "^3.24.1"
+  }
+}

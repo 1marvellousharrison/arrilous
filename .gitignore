@@ -1,0 +1,16 @@
+# Local environment files
+.env
+**/.env
+**/local.properties
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# OS files and logs
+.DS_Store
+Thumbs.db
+*.log
