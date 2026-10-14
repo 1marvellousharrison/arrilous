@@ -169,18 +169,14 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 76,
-      height: 76,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.orangeRed, AppColors.orangeRedDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Image.asset(
+        'assets/images/logo.png',
+        width: 76,
+        height: 76,
+        fit: BoxFit.cover,
       ),
-      child: const Icon(Icons.storefront, color: Colors.white, size: 38),
     );
   }
 }

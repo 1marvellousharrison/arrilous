@@ -312,18 +312,14 @@ class _BrandMark extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.orangeRed, AppColors.orangeRedDark],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(AppRadius.field),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          child: Image.asset(
+            'assets/images/logo.png',
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
           ),
-          child: const Icon(Icons.storefront, color: Colors.white),
         ),
         const SizedBox(width: AppSpacing.md),
         Column(
