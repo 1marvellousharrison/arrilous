@@ -216,6 +216,24 @@ void main() {
       expect(await repo.restore(), isTrue, reason: 'offline tolerance');
       expect(repo.isSignedIn, isTrue);
     });
+
+    test('stays signed out when the response is not JSON', () async {
+      // A host with no /api proxy answers the call with its SPA fallback HTML.
+      SharedPreferences.setMockInitialValues({
+        SessionStore.key: jsonEncode(sessionBody),
+      });
+
+      final repo = buildRepo(
+        (_) async => http.Response(
+          '<!DOCTYPE html><html></html>',
+          200,
+          headers: {'content-type': 'text/html'},
+        ),
+      );
+
+      expect(await repo.restore(), isFalse);
+      expect(repo.isSignedIn, isFalse);
+    });
   });
 
   group('one-time codes', () {

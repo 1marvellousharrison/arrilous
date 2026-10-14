@@ -204,6 +204,16 @@ class ApiClient {
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      // A successful response should be JSON (or empty, e.g. 204). Anything
+      // else means the request did not reach the API — typically a host that
+      // served the SPA fallback (HTML) because no /api proxy is configured.
+      if (text.isNotEmpty && decoded == null) {
+        throw ApiException(
+          response.statusCode,
+          'invalid_response',
+          'The server returned an unexpected response. Please try again.',
+        );
+      }
       return decoded;
     }
 

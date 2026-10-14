@@ -96,8 +96,13 @@ class _BusinessHubAppState extends State<BusinessHubApp> {
   }
 
   Future<void> _bootstrap() async {
-    await Future.wait([_theme.load(), _auth.restore()]);
-    if (mounted) setState(() => _booting = false);
+    // Never strand the app on the splash: whatever happens while restoring the
+    // cached theme and session, hand control to the root (sign-in) screen.
+    try {
+      await Future.wait([_theme.load(), _auth.restore()]);
+    } finally {
+      if (mounted) setState(() => _booting = false);
+    }
   }
 
   @override
