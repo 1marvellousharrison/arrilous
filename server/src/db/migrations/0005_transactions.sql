@@ -24,8 +24,8 @@ CREATE TABLE transactions (
   delivery_fee_kobo  INTEGER NOT NULL DEFAULT 0,
   total_kobo         INTEGER NOT NULL DEFAULT 0,
   notes              TEXT,
-  created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at         TEXT NOT NULL DEFAULT now_iso(),
+  updated_at         TEXT NOT NULL DEFAULT now_iso(),
 
   UNIQUE (business_id, transaction_number),
   CHECK (source IN ('manual', 'whatsapp')),

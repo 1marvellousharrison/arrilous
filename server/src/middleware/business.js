@@ -11,8 +11,27 @@ import { notFound, forbidden } from '../lib/errors.js';
  * One business per owner is enforced by a UNIQUE constraint on owner_user_id, so
  * this is a single lookup with no ambiguity.
  */
-export function findBusinessForUser(userId) {
+export async function findBusinessForUser(userId) {
   return queryOne('SELECT * FROM businesses WHERE owner_user_id = ?', userId);
+}
+
+/**
+ * Role check only, for the routes that create a business.
+ *
+ * requireBusiness would also demand an existing business, which is impossible on
+ * the route that creates one. Without this, a rider could sign up, POST /business
+ * and become an owner of a store — the client UI hides that path, but the API
+ * must not depend on the client hiding it.
+ */
+export function requireBusinessOwner(req, _res, next) {
+  try {
+    if (req.auth.role !== 'business') {
+      throw forbidden('Only a business account can own a business.');
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 /**
@@ -21,12 +40,12 @@ export function findBusinessForUser(userId) {
  * an authorisation failure. A non-business role gets 403, since a logistics
  * partner or rider never owns a business.
  */
-export function requireBusiness(req, _res, next) {
+export async function requireBusiness(req, _res, next) {
   try {
     if (req.auth.role !== 'business') {
       throw forbidden('This area is only available to business accounts.');
     }
-    const business = findBusinessForUser(req.auth.userId);
+    const business = await findBusinessForUser(req.auth.userId);
     if (!business) {
       throw notFound('Finish setting up your business first.');
     }

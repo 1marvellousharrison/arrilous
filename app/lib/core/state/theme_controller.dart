@@ -16,6 +16,10 @@ class ThemeController extends ChangeNotifier {
   ThemeMode get mode => _mode;
   bool get isDarkMode => _mode == ThemeMode.dark;
 
+  /// True while the theme tracks the phone's appearance rather than a choice
+  /// the owner made.
+  bool get isFollowingSystem => _mode == ThemeMode.system;
+
   /// False until the persisted preference has been read from disk.
   bool get isReady => _ready;
 

@@ -50,3 +50,34 @@ export function formatKobo(kobo) {
   const grouped = String(major).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `${negative ? '-' : ''}₦${grouped}.${String(minor).padStart(2, '0')}`;
 }
+
+/**
+ * Parses the value of a field that is already denominated in kobo — that is,
+ * any JSON field carrying the `_kobo` suffix.
+ *
+ * The two input shapes mean different things, and conflating them is a 100x bug:
+ *
+ *   - A JSON **number** is already kobo and is taken as-is. The field name says
+ *     so, so `price_kobo: 1500000` is ₦15,000.00. A fractional number is
+ *     rejected: it means the caller sent naira to a kobo field.
+ *   - A **string** is what a human typed, so it is read as major units and
+ *     `price_kobo: "15000.50"` is ₦15,000.50.
+ *
+ * Both spellings of the same amount therefore agree, and the loser of that
+ * disagreement gets an error instead of a silently wrong total.
+ */
+export function toKoboField(value) {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new TypeError('Amount is not a finite number.');
+    }
+    if (!Number.isInteger(value)) {
+      throw new TypeError(
+        'Amount is already in kobo, so it cannot have decimals. Use a string such as "15000.50" to send naira.'
+      );
+    }
+    return value;
+  }
+
+  return toKobo(value);
+}

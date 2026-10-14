@@ -33,10 +33,10 @@ export function publicCustomer(row) {
   };
 }
 
-export function publicCustomerDetail(row) {
-  const stats = queryOne(
+export async function publicCustomerDetail(row) {
+  const stats = await queryOne(
     `SELECT COUNT(*) AS transaction_count,
-            IFNULL(SUM(total_kobo), 0) AS total_spent_kobo
+            COALESCE(SUM(total_kobo), 0) AS total_spent_kobo
        FROM transactions WHERE customer_id = ?`,
     row.id
   );
@@ -47,8 +47,8 @@ export function publicCustomerDetail(row) {
   };
 }
 
-function findOwnedCustomer(businessId, customerId) {
-  const row = queryOne(
+async function findOwnedCustomer(businessId, customerId) {
+  const row = await queryOne(
     'SELECT * FROM customers WHERE id = ? AND business_id = ?',
     customerId,
     businessId
@@ -59,24 +59,24 @@ function findOwnedCustomer(businessId, customerId) {
 
 customerRouter.use(requireAuth, requireBusiness);
 
-customerRouter.get('/', (req, res) => {
+customerRouter.get('/', async (req, res) => {
   const query = parse(customerListQuerySchema, req.query);
   const where = ['c.business_id = ?'];
   const params = [req.business.id];
 
   if (query.search) {
-    where.push('(c.name LIKE ? OR IFNULL(c.phone, \'\') LIKE ? OR IFNULL(c.email, \'\') LIKE ?)');
+    where.push('(c.name ILIKE ? OR COALESCE(c.phone, \'\') ILIKE ? OR COALESCE(c.email, \'\') ILIKE ?)');
     const like = `%${query.search}%`;
     params.push(like, like, like);
   }
 
-  const rows = queryAll(
+  const rows = await queryAll(
     `SELECT c.*,
             (SELECT COUNT(*) FROM transactions t WHERE t.customer_id = c.id) AS transaction_count,
-            (SELECT IFNULL(SUM(t.total_kobo), 0) FROM transactions t WHERE t.customer_id = c.id) AS total_spent_kobo
+            (SELECT COALESCE(SUM(t.total_kobo), 0) FROM transactions t WHERE t.customer_id = c.id) AS total_spent_kobo
        FROM customers c
       WHERE ${where.join(' AND ')}
-      ORDER BY c.name COLLATE NOCASE ASC`,
+      ORDER BY lower(c.name) ASC`,
     ...params
   );
 
@@ -85,10 +85,10 @@ customerRouter.get('/', (req, res) => {
   });
 });
 
-customerRouter.post('/', (req, res) => {
+customerRouter.post('/', async (req, res) => {
   const body = parse(customerCreateSchema, req.body);
   const id = crypto.randomUUID();
-  run(
+  await run(
     `INSERT INTO customers (id, business_id, name, phone, email, address, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     id,
@@ -100,20 +100,20 @@ customerRouter.post('/', (req, res) => {
     body.notes ?? null
   );
   res.status(201).json({
-    customer: publicCustomerDetail(queryOne('SELECT * FROM customers WHERE id = ?', id)),
+    customer: await publicCustomerDetail(await queryOne('SELECT * FROM customers WHERE id = ?', id)),
   });
 });
 
-customerRouter.get('/:id', (req, res) => {
-  const customer = findOwnedCustomer(req.business.id, req.params.id);
+customerRouter.get('/:id', async (req, res) => {
+  const customer = await findOwnedCustomer(req.business.id, req.params.id);
   res.json({
-    customer: publicCustomerDetail(customer),
-    transactions: queryAll(
+    customer: await publicCustomerDetail(customer),
+    transactions: (await queryAll(
       `SELECT id, transaction_number, source, total_kobo, order_status, payment_status,
               delivery_status, completion_status, created_at
          FROM transactions WHERE customer_id = ? ORDER BY created_at DESC LIMIT 50`,
       customer.id
-    ).map((row) => ({
+    )).map((row) => ({
       id: row.id,
       transactionNumber: row.transaction_number,
       source: row.source,
@@ -127,8 +127,8 @@ customerRouter.get('/:id', (req, res) => {
   });
 });
 
-customerRouter.patch('/:id', (req, res) => {
-  const existing = findOwnedCustomer(req.business.id, req.params.id);
+customerRouter.patch('/:id', async (req, res) => {
+  const existing = await findOwnedCustomer(req.business.id, req.params.id);
   const body = parse(customerUpdateSchema, req.body);
 
   const columns = {
@@ -151,12 +151,12 @@ customerRouter.patch('/:id', (req, res) => {
   if (assignments.length > 0) {
     assignments.push('updated_at = ?');
     values.push(new Date().toISOString(), existing.id);
-    run(`UPDATE customers SET ${assignments.join(', ')} WHERE id = ?`, ...values);
+    await run(`UPDATE customers SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   }
 
   res.json({
-    customer: publicCustomerDetail(
-      queryOne('SELECT * FROM customers WHERE id = ?', existing.id)
+    customer: await publicCustomerDetail(
+      await queryOne('SELECT * FROM customers WHERE id = ?', existing.id)
     ),
   });
 });

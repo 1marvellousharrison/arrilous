@@ -13,8 +13,8 @@ CREATE TABLE users (
   email_verified_at TEXT,
   phone_verified_at TEXT,
   last_login_at     TEXT,
-  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at        TEXT NOT NULL DEFAULT now_iso(),
+  updated_at        TEXT NOT NULL DEFAULT now_iso(),
 
   CHECK (role IN ('business', 'logistics_partner', 'rider')),
   CHECK (status IN ('active', 'suspended')),
@@ -33,7 +33,7 @@ CREATE TABLE refresh_tokens (
   ip_address TEXT,
   expires_at TEXT NOT NULL,
   revoked_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  created_at TEXT NOT NULL DEFAULT now_iso()
 );
 
 CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
@@ -51,7 +51,7 @@ CREATE TABLE otp_challenges (
   user_id      TEXT REFERENCES users(id) ON DELETE CASCADE,
   expires_at   TEXT NOT NULL,
   consumed_at  TEXT,
-  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at   TEXT NOT NULL DEFAULT now_iso(),
 
   CHECK (channel IN ('email', 'sms')),
   CHECK (purpose IN ('signup_verification', 'login_verification', 'password_reset'))

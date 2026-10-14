@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(here, '..', '..');
+export const ROOT = path.resolve(here, '..');
 
 /**
  * Minimal .env loader (no dependency). Values already present in
@@ -76,13 +76,26 @@ function corsOrigins() {
   return origins;
 }
 
+if (isProd && !process.env.DATABASE_URL) {
+  throw new Error(
+    'Missing required environment variable DATABASE_URL. Refusing to start in '
+      + 'production without a Postgres connection.'
+  );
+}
+
 export const config = {
   env: NODE_ENV,
   isProd,
   host: process.env.HOST ?? '0.0.0.0',
   port: Number.parseInt(process.env.PORT ?? '4000', 10),
 
-  databasePath: process.env.DATABASE_PATH ?? path.join(ROOT, 'data', 'app.db'),
+  // Postgres connection string (Supabase or any Postgres). When absent, the
+  // server falls back to an in-process PGlite database — convenient for local
+  // development and the test suite, and never used in production.
+  databaseUrl: process.env.DATABASE_URL ?? null,
+  // Optional on-disk directory for the PGlite fallback. When unset the fallback
+  // is in-memory (fresh every boot), which is what the tests rely on.
+  pgliteDataDir: process.env.PGLITE_DATA_DIR ?? null,
 
   jwt: {
     secret: requiredInProd('JWT_SECRET', 'dev-only-insecure-secret-change-me'),
@@ -112,5 +125,18 @@ export const config = {
 
   cors: {
     origins: corsOrigins(),
+  },
+
+  /**
+   * Phase 14 — extension points only. A provider name being present flips the
+   * matching service to "configured", but nothing calls a provider yet; the
+   * credential itself is read from the environment at the point of use and is
+   * deliberately never copied into this object (or logged).
+   */
+  integrations: {
+    whatsapp: { provider: process.env.WHATSAPP_PROVIDER ?? null },
+    payments: { provider: process.env.PAYMENT_PROVIDER ?? 'simulated' },
+    logistics: { provider: process.env.LOGISTICS_PROVIDER ?? null },
+    notifications: { provider: process.env.NOTIFICATION_PROVIDER ?? null },
   },
 };

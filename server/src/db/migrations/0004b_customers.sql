@@ -11,8 +11,8 @@ CREATE TABLE customers (
   email       TEXT,
   address     TEXT,
   notes       TEXT,
-  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at  TEXT NOT NULL DEFAULT now_iso(),
+  updated_at  TEXT NOT NULL DEFAULT now_iso(),
 
   CHECK (length(trim(name)) BETWEEN 2 AND 160)
 );

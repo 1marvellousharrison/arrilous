@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Business management app API — authentication foundation",
+  "description": "Business management app API — auth plus business, catalog, customer, transaction and status-history domains",
   "engines": {
     "node": ">=22.5.0"
   },
@@ -11,11 +11,14 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "migrate": "node src/db/migrate.js",
-    "test": "node --test tests/auth.test.js tests/session.test.js"
+    "seed": "node src/db/seed.js",
+    "test": "node --test tests/"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "pg": "^8.23.1",
     "zod": "^3.24.1"
   }
 }

@@ -12,6 +12,7 @@ process.env.DATABASE_PATH = path.join(dbDir, 'test.db');
 process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 process.env.OTP_EXPOSE_IN_RESPONSE = 'true';
 process.env.RATE_LIMIT_MAX = '1000';
+process.env.DATABASE_URL = '';
 
 const { createApp } = await import('../src/app.js');
 const { closeDb, run } = await import('../src/db/index.js');
@@ -22,7 +23,7 @@ let server;
 let baseUrl_;
 
 before(async () => {
-  const app = createApp();
+  const app = await createApp();
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
@@ -36,12 +37,13 @@ after(async () => {
   fs.rmSync(dbDir, { recursive: true, force: true });
 });
 
-export async function api(method, route, { body, token } = {}) {
+export async function api(method, route, { body, token, headers } = {}) {
   const res = await fetch(`${baseUrl_}${route}`, {
     method,
     headers: {
       ...(body ? { 'content-type': 'application/json' } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(headers ?? {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -72,6 +74,7 @@ export async function createUser(overrides = {}) {
   const payload = {
     full_name: 'Test Owner',
     email: uniqueEmail('owner'),
+    phone: uniquePhone(),
     password: 'Str0ngPass!23',
     role: 'business',
     ...overrides,
@@ -79,5 +82,29 @@ export async function createUser(overrides = {}) {
   const res = await api('POST', '/auth/signup', { body: payload });
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return { payload, session: res.body };
+}
+
+/**
+ * Signs up a fresh business owner and creates its business profile, returning
+ * the access token plus the business id. Used by every Phase 1-7 suite so each
+ * test owns an isolated business.
+ */
+export async function createBusinessOwner(name = 'Test Store') {
+  const { session } = await createUser();
+  const res = await api('POST', '/business', {
+    token: session.access_token,
+    body: {
+      business_name: name,
+      phone: uniquePhone(),
+      business_category: 'Testing',
+      business_description: 'Test merchandise for the suite.',
+    },
+  });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  return {
+    token: session.access_token,
+    userId: session.user.id,
+    business: res.body.business,
+  };
 }
 

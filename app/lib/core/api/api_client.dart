@@ -140,6 +140,15 @@ class ApiClient {
   Future<dynamic> post(String path, {Map<String, dynamic>? body, String? token}) =>
       _send('POST', path, body: body, token: token);
 
+  Future<dynamic> put(String path, {Map<String, dynamic>? body, String? token}) =>
+      _send('PUT', path, body: body, token: token);
+
+  Future<dynamic> patch(String path, {Map<String, dynamic>? body, String? token}) =>
+      _send('PATCH', path, body: body, token: token);
+
+  Future<dynamic> delete(String path, {String? token}) =>
+      _send('DELETE', path, token: token);
+
   Future<dynamic> _send(
     String method,
     String path, {
@@ -157,13 +166,27 @@ class ApiClient {
     try {
       response = await switch (method) {
         'GET' => _client.get(uri, headers: headers),
-        _ => _client.post(
+        'POST' => _client.post(
             uri,
             headers: headers,
             body: body == null ? null : jsonEncode(body),
           ),
+        'PUT' => _client.put(
+            uri,
+            headers: headers,
+            body: body == null ? null : jsonEncode(body),
+          ),
+        'PATCH' => _client.patch(
+            uri,
+            headers: headers,
+            body: body == null ? null : jsonEncode(body),
+          ),
+        'DELETE' => _client.delete(uri, headers: headers),
+        _ => throw ArgumentError('Unsupported method $method'),
       }
           .timeout(timeout);
+    } on ArgumentError {
+      rethrow;
     } on Exception catch (error) {
       throw NetworkException(
         'Cannot reach the server. Check your connection and try again.\n($error)',

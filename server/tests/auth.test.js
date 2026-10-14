@@ -4,7 +4,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { api, baseUrl, createUser, uniqueEmail } from './helpers.js';
+import { api, baseUrl, createUser, uniqueEmail, uniquePhone } from './helpers.js';
 import { run } from '../src/db/index.js';
 import { resetRateLimits } from '../src/middleware/rateLimit.js';
 
@@ -24,8 +24,9 @@ describe('health', () => {
 describe('signup', () => {
   test('creates an account and returns a usable session', async () => {
     const email = uniqueEmail('signup');
+    const phone = uniquePhone();
     const res = await api('POST', '/auth/signup', {
-      body: { full_name: 'Ada Lovelace', email, password: 'Str0ngPass!23' },
+      body: { full_name: 'Ada Lovelace', email, phone, password: 'Str0ngPass!23' },
     });
 
     assert.equal(res.status, 201);
@@ -35,12 +36,20 @@ describe('signup', () => {
     assert.equal(res.body.user.email, email);
     assert.equal(res.body.user.role, 'business');
     assert.equal(res.body.user.fullName, 'Ada Lovelace');
-    assert.equal(res.body.user.phone, null);
+    assert.equal(res.body.user.phone, phone);
+  });
+
+  test('a phone number is required to sign up', async () => {
+    const res = await api('POST', '/auth/signup', {
+      body: { full_name: 'No Phone', email: uniqueEmail('nophone'), password: 'Str0ngPass!23' },
+    });
+    assert.equal(res.status, 422);
+    assert.equal(res.body.error.details[0].field, 'phone');
   });
 
   test('never leaks the password hash', async () => {
     const { body } = await api('POST', '/auth/signup', {
-      body: { full_name: 'Hash Check', email: uniqueEmail('hash'), password: 'Str0ngPass!23' },
+      body: { full_name: 'Hash Check', email: uniqueEmail('hash'), phone: uniquePhone(), password: 'Str0ngPass!23' },
     });
     assert.equal(body.user.password_hash, undefined);
     assert.equal(body.user.passwordHash, undefined);
@@ -53,6 +62,7 @@ describe('signup', () => {
       body: {
         full_name: 'Case Test',
         email: `  ${email.toUpperCase()}  `,
+        phone: uniquePhone(),
         password: 'Str0ngPass!23',
       },
     });
@@ -88,6 +98,7 @@ describe('signup', () => {
         body: {
           full_name: `Role ${role}`,
           email: uniqueEmail(role),
+          phone: uniquePhone(),
           password: 'Str0ngPass!23',
           role,
         },
@@ -102,6 +113,7 @@ describe('signup', () => {
       body: {
         full_name: 'Bad Role',
         email: uniqueEmail('role'),
+        phone: uniquePhone(),
         password: 'Str0ngPass!23',
         role: 'admin',
       },
@@ -112,7 +124,7 @@ describe('signup', () => {
 
   test('rejects a short password with a field-level message', async () => {
     const res = await api('POST', '/auth/signup', {
-      body: { full_name: 'Short Pass', email: uniqueEmail('short'), password: 'abc' },
+      body: { full_name: 'Short Pass', email: uniqueEmail('short'), phone: uniquePhone(), password: 'abc' },
     });
     assert.equal(res.status, 422);
     assert.equal(res.body.error.details[0].field, 'password');
@@ -120,7 +132,7 @@ describe('signup', () => {
 
   test('rejects a malformed email', async () => {
     const res = await api('POST', '/auth/signup', {
-      body: { full_name: 'Bad Email', email: 'not-an-email', password: 'Str0ngPass!23' },
+      body: { full_name: 'Bad Email', email: 'not-an-email', phone: uniquePhone(), password: 'Str0ngPass!23' },
     });
     assert.equal(res.status, 422);
     assert.equal(res.body.error.details[0].field, 'email');
@@ -155,6 +167,7 @@ describe('signup', () => {
       body: {
         full_name: 'Extra Fields',
         email: uniqueEmail('extra'),
+        phone: uniquePhone(),
         password: 'Str0ngPass!23',
         id: 'hijack-me',
         role: 'business',
@@ -208,12 +221,12 @@ describe('login', () => {
 
   test('rejects a suspended account', async () => {
     const { payload } = await createUser();
-    run("UPDATE users SET status = 'suspended' WHERE email = ?", payload.email);
+    await run("UPDATE users SET status = 'suspended' WHERE email = ?", payload.email);
     const res = await api('POST', '/auth/login', {
       body: { identifier: payload.email, password: payload.password },
     });
     assert.equal(res.status, 401);
-    run("UPDATE users SET status = 'active' WHERE email = ?", payload.email);
+    await run("UPDATE users SET status = 'active' WHERE email = ?", payload.email);
   });
 });
 
@@ -278,17 +291,17 @@ describe('access tokens', () => {
 
   test('rejects a valid token whose user was deleted', async () => {
     const { session } = await createUser();
-    run('DELETE FROM users WHERE id = ?', session.user.id);
+    await run('DELETE FROM users WHERE id = ?', session.user.id);
     const res = await api('GET', '/auth/me', { token: session.access_token });
     assert.equal(res.status, 401);
   });
 
   test('rejects a valid token for a suspended user', async () => {
     const { session } = await createUser();
-    run("UPDATE users SET status = 'suspended' WHERE id = ?", session.user.id);
+    await run("UPDATE users SET status = 'suspended' WHERE id = ?", session.user.id);
     const res = await api('GET', '/auth/me', { token: session.access_token });
     assert.equal(res.status, 403);
-    run("UPDATE users SET status = 'active' WHERE id = ?", session.user.id);
+    await run("UPDATE users SET status = 'active' WHERE id = ?", session.user.id);
   });
 });
 

@@ -91,15 +91,20 @@ export function assertTransition(type, from, to) {
   const allowed = definition.transitions[from] ?? [];
   if (!allowed.includes(to)) {
     throw badRequest(
-      `A ${definition.label} that is "${from}" cannot become "${to}".`,
+      `${article(definition.label)} that is "${from}" cannot become "${to}".`,
       [{
         field: type,
         message: allowed.length
           ? `Allowed next: ${allowed.join(', ')}.`
-          : `A ${definition.label} of "${from}" is final.`,
+          : `${article(definition.label)} of "${from}" is final.`,
       }]
     );
   }
+}
+
+/** "a" or "an", so a sentence starting with an axis reads as English. */
+function article(word) {
+  return `${'aeiou'.includes(word[0].toLowerCase()) ? 'An' : 'A'} ${word}`;
 }
 
 /**
@@ -107,7 +112,17 @@ export function assertTransition(type, from, to) {
  * of each other, so these are checked whenever any of them changes.
  */
 export function assertStatusCombination(next, current) {
-  if (next.orderStatus === 'cancelled') return;
+  // Cancelling cannot be combined with completing: an owner who cancels and
+  // marks an order finished in the same breath has produced a state that reads
+  // as "this sale happened and also did not happen".
+  if (next.orderStatus === 'cancelled') {
+    if (next.completionStatus === 'completed') {
+      throw badRequest('A cancelled transaction cannot also be completed.', [
+        { field: 'completionStatus', message: 'Cancel is final.' },
+      ]);
+    }
+    return;
+  }
 
   if (next.completionStatus === 'completed') {
     if (current.paymentStatus !== 'paid' && next.paymentStatus !== 'paid') {

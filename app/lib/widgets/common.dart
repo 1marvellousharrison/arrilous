@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
@@ -297,6 +300,67 @@ class _OtpCodeInputState extends State<OtpCodeInput> {
           ),
         );
       }),
+    );
+  }
+}
+
+/// The shop's logo when it has one, otherwise its first letter on a tinted
+/// tile. The logo arrives as an image data URL on the profile, so it decodes
+/// straight to memory; anything unreadable falls back to the letter rather than
+/// throwing.
+class BusinessLogoAvatar extends StatelessWidget {
+  const BusinessLogoAvatar({
+    required this.logoUrl,
+    required this.name,
+    super.key,
+    this.size = 54,
+    this.radius,
+  });
+
+  final String? logoUrl;
+  final String name;
+  final double size;
+  final BorderRadius? radius;
+
+  /// The bytes behind an image data URL, or null when there is none or it is
+  /// malformed. Exposed so the setup flow can preview a saved logo too.
+  static Uint8List? decode(String? dataUrl) {
+    if (dataUrl == null) return null;
+    final comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    try {
+      return base64Decode(dataUrl.substring(comma + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bytes = decode(logoUrl);
+    final trimmed = name.trim();
+    final letter = trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
+
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: radius ?? BorderRadius.circular(AppRadius.field),
+      ),
+      child: bytes != null
+          ? Image.memory(bytes, width: size, height: size, fit: BoxFit.cover)
+          : Text(
+              letter,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.44,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
     );
   }
 }

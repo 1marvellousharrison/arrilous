@@ -2,7 +2,7 @@ import { createApp } from './app.js';
 import { config } from './config.js';
 import { closeDb } from './db/index.js';
 
-const app = createApp();
+const app = await createApp();
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`dee-api listening on http://${config.host}:${config.port} (${config.env})`);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { normaliseEmail, normalisePhone } from './normalise.js';
-import { toKobo } from './money.js';
+import { toKoboField } from './money.js';
 import {
   ORDER_STATUSES,
   PAYMENT_STATUSES,
@@ -46,7 +46,9 @@ export const signupSchema = z.object({
     .min(2, 'Full name is required.')
     .max(120, 'Full name is too long.'),
   email: emailSchema,
-  phone: phoneSchema.optional(),
+  // Spec 6 — a phone number is part of the account, not an optional extra:
+  // riders, partners and businesses are all reachable by phone.
+  phone: phoneSchema,
   password: passwordSchema,
   role: z.enum(ROLES).default('business'),
 });
@@ -96,22 +98,24 @@ export function toFieldErrors(error) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * A money input, normalised to integer kobo.
+ * A money input for a `*_kobo` field.
  *
- * Accepts "15000", "15,000.00" or 1500000 (kobo) and rejects anything with more
- * precision than a cent can hold, so a typo becomes a field error instead of
- * silently truncated money.
+ * `toKoboField` decides the scale: a JSON number is already kobo, a string is
+ * a human-typed naira amount like "15000" or "15,000.50". Precision beyond a
+ * kobo becomes a field error rather than silently truncated money.
  */
 const moneySchema = (label) =>
   z
     .union([z.string(), z.number()])
     .transform((value, ctx) => {
       try {
-        return toKobo(value);
-      } catch {
+        return toKoboField(value);
+      } catch (error) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `${label} must be an amount like 15000 or 15000.50.`,
+          message: error instanceof TypeError
+            ? error.message
+            : `${label} must be an amount like 15000 or 15000.50.`,
         });
         return z.NEVER;
       }
@@ -132,6 +136,22 @@ const optionalText = (max) =>
     .nullable()
     .transform((value) => (value ? value : null));
 
+// An optional logo, carried as a data-URL image so it travels in the same JSON
+// as the rest of the profile. The client downscales before sending, so this cap
+// only has to stop an outsized body, and only the shapes the client can produce
+// are accepted. Blank clears it, which is why the transform folds "" to null.
+const logoUrlSchema = z
+  .string()
+  .trim()
+  .max(400000, 'Logo image is too large.')
+  .regex(
+    /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/,
+    'Logo must be a PNG, JPEG or WebP image.'
+  )
+  .optional()
+  .nullable()
+  .transform((value) => (value ? value : null));
+
 // Phase 1 — business profile
 export const businessCreateSchema = z.object({
   business_name: z
@@ -139,10 +159,21 @@ export const businessCreateSchema = z.object({
     .trim()
     .min(2, 'Business name must be at least 2 characters.')
     .max(160, 'Business name is too long.'),
-  business_category: optionalText(80),
-  business_description: optionalText(1000),
-  phone: phoneSchema.optional().nullable(),
+  // Spec 6 — a reachable phone and a clear category and offer are part of a
+  // complete business profile, not optional decorations.
+  phone: phoneSchema,
+  business_category: z
+    .string({ required_error: 'Category is required.' })
+    .trim()
+    .min(2, 'Category must be at least 2 characters.')
+    .max(80, 'Category is too long.'),
+  business_description: z
+    .string({ required_error: 'Tell us what you sell.' })
+    .trim()
+    .min(3, 'Tell us what you sell.')
+    .max(1000, 'Description is too long.'),
   email: emailSchema.optional().nullable(),
+  logo_url: logoUrlSchema,
 });
 
 export const businessUpdateSchema = businessCreateSchema.partial().refine(
@@ -150,7 +181,9 @@ export const businessUpdateSchema = businessCreateSchema.partial().refine(
   { message: 'Send at least one field to update.' }
 );
 
-// Phase 2 — business location
+// Phase 2 — business location. `city`, `area` and `state` are what the
+// delivery partner reads on the request, so the client requires them in setup;
+// they stay optional here so a partially-filled location is still a valid row.
 export const locationSchema = z
   .object({
     address: z
@@ -159,6 +192,7 @@ export const locationSchema = z
       .min(3, 'Enter the street address.')
       .max(400, 'Address is too long.'),
     city: optionalText(120),
+    area: optionalText(120),
     state: optionalText(120),
     country: optionalText(120),
     latitude: z.number().min(-90, 'Latitude must be between -90 and 90.').max(90).optional().nullable(),
@@ -266,6 +300,29 @@ export const transactionCreateSchema = z.object({
     .max(200, 'That is too many items for one transaction.'),
 });
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * One end of a Phase 11 date range.
+ *
+ * `endOfDay` decides what a bare calendar date means: the first instant of that
+ * UTC day for a `from`, the last for a `to`. A full timestamp passes through.
+ */
+const dateBound = (endOfDay) =>
+  z
+    .union([z.string(), z.date()])
+    .refine((value) => !Number.isNaN(toDateBound(value, endOfDay).getTime()), {
+      message: 'Enter a valid date.',
+    })
+    .transform((value) => toDateBound(value, endOfDay));
+
+function toDateBound(value, endOfDay) {
+  if (typeof value === 'string' && DATE_ONLY.test(value)) {
+    return new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`);
+  }
+  return value instanceof Date ? value : new Date(value);
+}
+
 export const transactionListQuerySchema = z.object({
   search: z.string().trim().max(160).optional(),
   order_status: z.enum(ORDER_STATUSES).optional(),
@@ -274,21 +331,236 @@ export const transactionListQuerySchema = z.object({
   completion_status: z.enum(COMPLETION_STATUSES).optional(),
   customer_id: z.string().trim().max(64).optional(),
   source: z.enum(['manual', 'whatsapp']).optional(),
+  // Phase 11 — date range over created_at. A full timestamp is used as given and
+  // re-serialised to UTC before the query runs: created_at is stored as an
+  // ISO-8601 UTC string, so comparing it to a client-supplied local-time string
+  // lexicographically would silently shift results by the client's offset.
+  //
+  // A bare `YYYY-MM-DD` is expanded instead. Leaving `to` at midnight would
+  // exclude everything sold during that day, which is the opposite of what an
+  // owner filtering "up to today" means.
+  from: dateBound(false).optional(),
+  to: dateBound(true).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).max(100_000).optional().default(0),
-});
+}).refine(
+  (value) => !value.from || !value.to || value.from <= value.to,
+  { message: 'The start date must not be after the end date.', path: ['from'] }
+);
 
-// Phase 7 — status updates
+// Phase 7 — status updates. `note` is Phase 8: it is stored on every timeline
+// entry the change writes, so an owner can say why money moved.
 export const statusUpdateSchema = z
   .object({
     orderStatus: z.enum(ORDER_STATUSES).optional(),
     paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
     deliveryStatus: z.enum(DELIVERY_STATUSES).optional(),
     completionStatus: z.enum(COMPLETION_STATUSES).optional(),
+    note: z.string().trim().max(500).optional(),
   })
+  // Counts the four axes explicitly rather than testing every value: with a
+  // `note` in the shape, `{ note: "just looking" }` would otherwise satisfy a
+  // generic "some value is defined" check and silently change nothing.
   .refine(
-    (value) => Object.values(value).some((entry) => entry !== undefined),
+    (value) =>
+      value.orderStatus !== undefined ||
+      value.paymentStatus !== undefined ||
+      value.deliveryStatus !== undefined ||
+      value.completionStatus !== undefined,
     { message: 'Send at least one status to change.' }
   );
+
+// Logistics extension. These schemas keep delivery data separate from the
+// existing transaction payload and accept human-entered money consistently.
+const capacitySchema = z.enum(['small', 'medium', 'large', 'very_large']);
+const vehicleSchema = z.enum(['motorcycle', 'tricycle', 'car', 'van', 'pickup', 'truck', 'other']);
+const riderModeSchema = z.enum(['motorcycle', 'car', 'bicycle', 'other']);
+
+export const logisticsOrganizationSchema = z.object({
+  name: z.string({ required_error: 'Organization name is required.' }).trim().min(2).max(160),
+  phone: phoneSchema,
+  category: z
+    .string({ required_error: 'Category is required.' })
+    .trim()
+    .min(2, 'Category must be at least 2 characters.')
+    .max(120, 'Category is too long.'),
+  description: z
+    .string({ required_error: 'Tell us what you deliver.' })
+    .trim()
+    .min(3, 'Tell us what you deliver.')
+    .max(1000, 'Description is too long.'),
+  email: emailSchema.optional().nullable(),
+});
+
+// Spec 6 — a rider arrives with the same reachability details as a business:
+// a phone to book them on, and a category plus a description of what they carry.
+export const riderProfileSchema = z.object({
+  phone: phoneSchema,
+  category: z
+    .string({ required_error: 'Category is required.' })
+    .trim()
+    .min(2, 'Category must be at least 2 characters.')
+    .max(120, 'Category is too long.'),
+  description: z
+    .string({ required_error: 'Tell us what you deliver.' })
+    .trim()
+    .min(3, 'Tell us what you deliver.')
+    .max(1000, 'Description is too long.'),
+});
+
+// Spec 16/17 v2 — when a provider goes active they decide how long today's
+// shift runs. `planned_hours` becomes the closing time (now + N hours) and is
+// kept so the Active page can show and edit the plan. A client may instead
+// pin `availability_expires_at` directly; both forms create a closing time.
+export const availabilitySchema = z
+  .object({
+    is_available: z.boolean(),
+    availability_expires_at: z.string().datetime().optional().nullable(),
+    planned_hours: z.number().min(1, 'Plan at least 1 hour.').max(24, 'A shift cannot exceed 24 hours.').optional().nullable(),
+  })
+  .refine(
+    (value) =>
+      !value.is_available ||
+      value.availability_expires_at == null ||
+      new Date(value.availability_expires_at) > new Date(),
+    { message: 'Availability closing time must be in the future.', path: ['availability_expires_at'] }
+  );
+
+export const serviceAreaSchema = z.object({
+  city: z.string({ required_error: 'City is required.' }).trim().min(2).max(120),
+  area: optionalText(120),
+  state: optionalText(120),
+  country: optionalText(120),
+  // Spec 19 — coordinates and radius are what make distance ranking and route
+  // coverage computable rather than a name match on the city string.
+  latitude: z.number().min(-90, 'Latitude must be between -90 and 90.').max(90).optional().nullable(),
+  longitude: z.number().min(-180, 'Longitude must be between -180 and 180.').max(180).optional().nullable(),
+  radius_km: z.number().min(0).max(20_000).optional().nullable(),
+}).refine((value) => (value.latitude == null) === (value.longitude == null), {
+  message: 'Send latitude and longitude together.', path: ['latitude'],
+});
+
+export const pricingSchema = z.object({
+  destination: z.string({ required_error: 'Destination is required.' }).trim().min(2).max(160),
+  price_kobo: nonNegativeKobo('Price'),
+  vehicle_type: vehicleSchema.optional().nullable(),
+});
+
+export const vehicleCreateSchema = z.object({
+  vehicle_type: vehicleSchema,
+  total_quantity: z.number().int().min(0).max(10000),
+  available_quantity: z.number().int().min(0).max(10000),
+  capacity_category: capacitySchema,
+  starting_price_kobo: nonNegativeKobo('Starting price').optional().default(0),
+  active: z.boolean().optional().default(true),
+  description: optionalText(500),
+}).refine((value) => value.available_quantity <= value.total_quantity, {
+  message: 'Available quantity cannot exceed total quantity.', path: ['available_quantity'],
+});
+
+export const riderModeCreateSchema = z.object({
+  mode: riderModeSchema,
+  capacity_category: capacitySchema,
+  rate_kobo: nonNegativeKobo('Rate').optional().default(0),
+  is_primary: z.boolean().optional().default(false),
+  active: z.boolean().optional().default(true),
+});
+
+export const deliveryRequestSchema = z.object({
+  transaction_id: z.string().trim().min(1),
+  organization_id: z.string().trim().min(1).optional(),
+  rider_id: z.string().trim().min(1).optional(),
+  package_description: optionalText(500),
+  package_size: capacitySchema.optional(),
+  preferred_mode: z.string().trim().max(40).optional().nullable(),
+}).refine((value) => Boolean(value.organization_id) !== Boolean(value.rider_id), {
+  message: 'Choose one logistics organization or one rider.', path: ['organization_id'],
+});
+
+export const quoteSchema = z.object({
+  quoted_price_kobo: nonNegativeKobo('Quote'),
+});
+
+export const assignmentSchema = z.object({
+  rider_id: z.string().trim().min(1).optional().nullable(),
+  vehicle_id: z.string().trim().min(1).optional().nullable(),
+});
+
+export const deliveryUpdateSchema = z.object({
+  status: z.enum(['accepted', 'picked_up', 'in_transit', 'delivered', 'failed', 'declined']),
+  failure_reason: optionalText(500),
+}).refine((value) => value.status !== 'failed' || Boolean(value.failure_reason), {
+  message: 'Give a reason for a failed delivery.', path: ['failure_reason'],
+});
+
+export const confirmationSchema = z.object({
+  method: z.enum(['otp', 'signature', 'photo', 'manual']),
+  otp: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit customer OTP.').optional(),
+  proof_note: optionalText(1000),
+}).refine((value) => value.method !== 'otp' || Boolean(value.otp), {
+  message: 'Enter the customer OTP.', path: ['otp'],
+});
+
+export const riderAssignmentSchema = z.object({
+  rider_user_id: z.string().trim().min(1),
+});
+
+// Spec 16/17 v2 — a provider can lengthen OR trim today's shift by minutes, so
+// `minutes` is signed: +30 extends the closing time, -30 pulls it earlier. A
+// trim that removes more than is left ends the shift by writing the closing
+// time as "now". Zero is rejected so an unspoken tap does nothing.
+export const availabilityAdjustSchema = z.object({
+  minutes: z.number().int().min(-24 * 60).max(24 * 60).refine((value) => value !== 0, {
+    message: 'Minutes cannot be zero.',
+  }),
+});
+
+export const deliveryOtpSchema = z.object({
+  expires_in_minutes: z.number().int().min(5).max(24 * 60).optional().default(30),
+});
+
+// ─────────────────────────────────────────────────────────────
+// Wallet: funding (virtual account / card) and payout
+// ─────────────────────────────────────────────────────────────
+
+const positiveKobo = (label) =>
+  moneySchema(label).refine((kobo) => kobo > 0, `${label} must be greater than zero.`);
+
+const accountNumberSchema = z
+  .string({ required_error: 'Account number is required.' })
+  .trim()
+  .regex(/^\d{10}$/, 'Account number must be 10 digits.');
+
+export const bankResolveSchema = z.object({
+  bank_code: z.string({ required_error: 'Choose a bank.' }).trim().min(1, 'Choose a bank.'),
+  account_number: accountNumberSchema,
+});
+
+export const walletFundSchema = z.object({
+  amount_kobo: positiveKobo('Amount'),
+  channel: z.enum(['virtual_account', 'card'], {
+    required_error: 'Choose how the money arrives.',
+  }),
+  // Only read by the simulated card channel; a real gateway would tokenise the
+  // card client-side and send a token instead of the number.
+  card_number: z.string().trim().optional(),
+  narration: optionalText(140),
+});
+
+export const walletPayoutSchema = z.object({
+  amount_kobo: positiveKobo('Amount'),
+  bank_code: z.string({ required_error: 'Choose a bank.' }).trim().min(1, 'Choose a bank.'),
+  account_number: accountNumberSchema,
+  account_name: z
+    .string({ required_error: 'Account name is required.' })
+    .trim()
+    .min(2, 'Account name is required.')
+    .max(120, 'Account name is too long.'),
+  narration: optionalText(140),
+});
+
+export const walletPayoutConfirmSchema = z.object({
+  otp: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code.'),
+});
 
 export { nonNegativeKobo, moneySchema };

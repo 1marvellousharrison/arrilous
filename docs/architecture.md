@@ -104,7 +104,45 @@ store, so tests exercise the fallback without a platform channel.
 `users.role` is one of `business`, `logistics_partner`, `rider` — the three
 roles in the spec (sections 3.1–3.3). The column exists now so later phases can
 add logistics dashboards and rider flows without a migration that rewrites
-existing accounts.
+existing accounts. All three roles are live: `requireRole(...)` guards each
+logistics route, and the Flutter shell routes a non-business session straight to
+`LogisticsWorkspaceScreen` instead of the business home.
+
+## Logistics network (integrated spec v3)
+
+`server/src/routes/logistics.js` is a local delivery network, not a third-party
+integration. It spans three tables of concepts:
+
+- **Supply** — `logistics_organizations` (availability window, auto-closing),
+  `logistics_service_areas` (city/area with optional coordinates and radius),
+  `logistics_pricing` (published fee per destination city), `logistics_vehicles`
+  (capacity + free quantity), `logistics_riders` with their own areas and
+  `rider_delivery_modes`.
+- **Demand** — `delivery_requests`, one per transaction that requires delivery,
+  carrying pickup/destination, package size and either a published, quoted or
+  accepted `*_kobo` price. `delivery_assignments` records who holds which
+  vehicle and `delivery_request_events` is the append-only trail.
+- **Matching** — `GET /logistics/providers` requires the destination city,
+  filters by coverage of pickup **and** destination, by live availability and by
+  a free vehicle that can carry the package, then ranks by haversine distance
+  from the business's coordinates. A provider with no free vehicle is excluded
+  rather than shown as unavailable.
+
+Three invariants are enforced server-side because they are the ones that would
+otherwise rot:
+
+1. **Vehicles come back.** Every assignment checks out a vehicle; reaching a
+   terminal status, retrying, or re-assigning restores `available_quantity`
+   first (`releaseRequestVehicles` in `routes/logistics.js`).
+2. **Availability affects only new work.** An expired window removes a provider
+   from matching but never detaches a request already assigned.
+3. **Payment and completion stay separate.** Confirming a delivery moves the
+   delivery axis only; the payment axis moves only through its own routes.
+
+Role access is decided per route rather than per router: the same
+`/logistics/requests` collection answers `business`, `logistics_partner` and
+`rider` with different visibility, and `requireRole(...)` rejects the others
+with 403.
 
 ## Data isolation (foundation for Phase 13)
 
@@ -113,6 +151,50 @@ query will be scoped by the `user_id` resolved by `requireAuth`. The auth layer
 already establishes the rule that IDs arrive from the token, never from the
 request body — `signup` ignores client-supplied `id`/`role`/`status`, and this
 is covered by a test.
+
+## Status history (Phase 8)
+
+`transaction_status_history` is append-only. Rows are inserted when a transaction
+is created (one per axis, `old_value` null) and when a status patch actually
+moves an axis; they are never updated or deleted. A rejected or no-op patch
+writes nothing, so the trail is a record of what happened rather than a second
+copy of current state that could drift.
+
+The status tables in `lib/statuses.js` are the single authority for both the
+transition graph and the cross-axis rules. The Flutter client keeps a copy of the
+transition graph in `TransactionRepository` purely so it can *hide* an action that
+cannot succeed — it never decides legality, and the server re-checks everything.
+
+Two rules in that graph are worth spelling out because the UI depends on them:
+completing requires payment settled and delivery finished, and a completed
+transaction is frozen (cancelling one is refused outright, since a transaction
+cannot be both cancelled and completed).
+
+## Integration boundaries (Phase 14)
+
+`server/src/services/` holds the four future external boundaries —
+`WhatsAppService`, `PaymentService`, `LogisticsService`, `NotificationService` —
+behind a shared `IntegrationService` base and a registry (`services/index.js`).
+Every method is a reserved slot that throws `501 not_implemented`; nothing makes
+a network call, so the seams can be reviewed and tested before a provider exists.
+The rule they encode is that an integration may only move the four status axes
+through the same status service a manual change uses — it may not write to
+`transactions` directly. A boundary reports `configured: true` only when its
+provider name is in the environment; the credential is read at the point of use
+and never stored in `config`. See `docs/future-integrations.md`.
+
+## Reading money on the dashboard (Phase 12)
+
+The dashboard reports aggregates the API computes over the whole table. It never
+sums a paginated list on the client, because a page is not the ledger — a business
+with 5,000 sales would see a fifth of its revenue. `catalog` counts are likewise
+server-side, so the business card is right without loading the product and
+customer lists first.
+
+A cancelled transaction is excluded from the money totals but keeps its own
+count. The reasoning is in `routes/dashboard.js`: a cancelled sale did not happen,
+so counting it as revenue would overstate what the business earned, while hiding
+it entirely would lose the fact that it was cancelled.
 
 ## Error contract
 
@@ -125,10 +207,22 @@ is covered by a test.
 
 Codes in use: `validation_failed` (422), `bad_request` (400), `invalid_json`
 (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict`
-(409), `too_many_requests` (429), `server_error` (500). The mobile client maps
-these to field-level messages via `ApiException.fieldError(field)`.
+(409), `too_many_requests` (429), `server_error` (500), and `not_implemented`
+(501) from the Phase 14 integration slots. The mobile client maps these to
+field-level messages via `ApiException.fieldError(field)`.
 
 ## Deliberately not built yet
 
-WhatsApp AI, payment providers/webhooks, logistics partner/rider APIs and live
-tracking. Extension points are reserved in `docs/future-integrations.md`.
+WhatsApp AI, payment providers/webhooks and live tracking. The boundaries for
+all of them exist as inert services (see "Integration boundaries" above and
+`docs/future-integrations.md`); none is implemented. The logistics network is
+the exception: provider/rider accounts, matching, delivery lifecycle,
+notifications and dashboards all run locally against this API, while a
+third-party fleet (`LOGISTICS_PROVIDER`) remains future work.
+
+Automated stock movement is also absent: a sale does not decrement
+`stock_quantity`. The spec assigns stock checking to the owner ("the business
+owner can verify stock first") and lists automated stock as a future feature, so
+the picker refuses an out-of-stock product while restock stays a product edit.
+Adding it later means a decrement inside the same transaction as the sale, or the
+stock figure and the transaction history could disagree.

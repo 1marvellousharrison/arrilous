@@ -14,15 +14,15 @@ function readBearer(req) {
  * Re-reads the user row so a suspended or deleted account cannot keep using an
  * unexpired token.
  */
-export function requireAuth(req, _res, next) {
+export async function requireAuth(req, _res, next) {
   const token = readBearer(req);
   if (!token) return next(unauthorized('Missing access token.'));
 
   const claims = verifyAccessToken(token);
   if (!claims) return next(unauthorized('Your session has expired. Please sign in again.'));
 
-  const user = queryOne(
-    'SELECT id, role, status FROM users WHERE id = ?',
+  const user = await queryOne(
+    'SELECT id, full_name, email, phone, role, status FROM users WHERE id = ?',
     claims.sub
   );
   if (!user) return next(unauthorized('Account no longer exists.'));
@@ -32,14 +32,14 @@ export function requireAuth(req, _res, next) {
   return next();
 }
 
-export function optionalAuth(req, _res, next) {
+export async function optionalAuth(req, _res, next) {
   const token = readBearer(req);
   if (token) {
     const claims = verifyAccessToken(token);
     if (claims) {
-      const user = queryOne('SELECT id, role, status FROM users WHERE id = ?', claims.sub);
+      const user = await queryOne('SELECT id, role, status FROM users WHERE id = ?', claims.sub);
       if (user && user.status === 'active') {
-        req.auth = { userId: user.id, role: user.role };
+  req.auth = { userId: user.id, role: user.role, fullName: user.full_name, email: user.email, phone: user.phone };
       }
     }
   }

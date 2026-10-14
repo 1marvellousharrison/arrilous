@@ -163,14 +163,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
-                  labelText: 'Phone number (optional)',
+                  labelText: 'Phone number',
                   hintText: '+2348031234567',
                   prefixIcon: const Icon(Icons.phone_outlined),
                   errorText: _err('phone'),
                 ),
                 validator: (value) {
                   final text = (value ?? '').trim();
-                  if (text.isEmpty) return null;
+                  if (text.isEmpty) return 'Phone number is required.';
                   if (!RegExp(r'^\+?[0-9\s-]{7,}$').hasMatch(text)) {
                     return 'Enter a valid phone number.';
                   }

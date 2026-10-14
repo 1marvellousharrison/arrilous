@@ -26,6 +26,17 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Phase 2 — the business setup flow reads the device location once, when
+	     the owner chooses to attach it to the business. iOS denies the prompt
+	     without this string, so the setup would silently fall back to no
+	     location. The flow still works without granting it. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>dee_app uses your location once, to attach where your business is. You can skip this.</string>
+	<!-- Phase 1 — an optional business logo is chosen from the photo library.
+	     iOS denies the picker without this string. The logo can also be left
+	     empty, in which case the app shows the first letter of the name. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>dee_app uses your photo library so you can choose a logo for your business. This is optional.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

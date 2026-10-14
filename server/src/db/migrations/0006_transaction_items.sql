@@ -17,7 +17,7 @@ CREATE TABLE transaction_items (
   quantity             INTEGER NOT NULL,
   unit_price_kobo      INTEGER NOT NULL,
   subtotal_kobo        INTEGER NOT NULL,
-  created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at           TEXT NOT NULL DEFAULT now_iso(),
 
   CHECK (quantity > 0),
   CHECK (unit_price_kobo >= 0),

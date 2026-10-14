@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Phase 2 — the business setup flow reads the device location once, when
+         the owner chooses to attach it to the business. Both precisions are
+         declared because coarse is enough to suggest a place, and the app asks
+         for fine only if the owner grants it. Neither is required to run: the
+         flow continues without a location. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+
     <application
         android:label="dee_app"
         android:name="${applicationName}"

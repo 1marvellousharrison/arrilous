@@ -36,8 +36,8 @@ export function publicProduct(row) {
   };
 }
 
-function findOwnedProduct(businessId, productId) {
-  const row = queryOne(
+async function findOwnedProduct(businessId, productId) {
+  const row = await queryOne(
     'SELECT * FROM products WHERE id = ? AND business_id = ?',
     productId,
     businessId
@@ -48,10 +48,10 @@ function findOwnedProduct(businessId, productId) {
   return row;
 }
 
-function assertSkuAvailable(businessId, sku, exceptId) {
+async function assertSkuAvailable(businessId, sku, exceptId) {
   if (!sku) return;
-  const clash = queryOne(
-    'SELECT id FROM products WHERE business_id = ? AND sku = ? AND id IS NOT ?',
+  const clash = await queryOne(
+    'SELECT id FROM products WHERE business_id = ? AND sku = ? AND id IS DISTINCT FROM ?',
     businessId,
     sku,
     exceptId ?? null
@@ -62,14 +62,14 @@ function assertSkuAvailable(businessId, sku, exceptId) {
 productRouter.use(requireAuth, requireBusiness);
 
 // GET /api/v1/products — search + category filter, archived hidden by default.
-productRouter.get('/', (req, res) => {
+productRouter.get('/', async (req, res) => {
   const query = parse(productListQuerySchema, req.query);
   const where = ['business_id = ?'];
   const params = [req.business.id];
 
   if (!query.include_archived) where.push('active = 1');
   if (query.search) {
-    where.push('(name LIKE ? OR IFNULL(sku, \'\') LIKE ?)');
+    where.push('(name ILIKE ? OR COALESCE(sku, \'\') ILIKE ?)');
     const like = `%${query.search}%`;
     params.push(like, like);
   }
@@ -78,30 +78,30 @@ productRouter.get('/', (req, res) => {
     params.push(query.category);
   }
 
-  const rows = queryAll(
+  const rows = await queryAll(
     `SELECT * FROM products WHERE ${where.join(' AND ')}
-      ORDER BY active DESC, name COLLATE NOCASE ASC`,
+      ORDER BY active DESC, lower(name) ASC`,
     ...params
   );
   res.json({ products: rows.map(publicProduct) });
 });
 
-productRouter.get('/categories', (req, res) => {
-  const rows = queryAll(
+productRouter.get('/categories', async (req, res) => {
+  const rows = await queryAll(
     `SELECT DISTINCT category FROM products
       WHERE business_id = ? AND active = 1 AND category IS NOT NULL
-      ORDER BY category COLLATE NOCASE ASC`,
+      ORDER BY category ASC`,
     req.business.id
   );
   res.json({ categories: rows.map((row) => row.category) });
 });
 
-productRouter.post('/', (req, res) => {
+productRouter.post('/', async (req, res) => {
   const body = parse(productCreateSchema, req.body);
-  assertSkuAvailable(req.business.id, body.sku, null);
+  await assertSkuAvailable(req.business.id, body.sku, null);
 
   const id = crypto.randomUUID();
-  run(
+  await run(
     `INSERT INTO products (id, business_id, name, description, category,
                            price_kobo, sku, stock_quantity, image_url)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -115,17 +115,17 @@ productRouter.post('/', (req, res) => {
     body.stock_quantity,
     body.image_url ?? null
   );
-  res.status(201).json({ product: publicProduct(findOwnedProduct(req.business.id, id)) });
+  res.status(201).json({ product: publicProduct(await findOwnedProduct(req.business.id, id)) });
 });
 
-productRouter.get('/:id', (req, res) => {
-  res.json({ product: publicProduct(findOwnedProduct(req.business.id, req.params.id)) });
+productRouter.get('/:id', async (req, res) => {
+  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, req.params.id)) });
 });
 
-productRouter.patch('/:id', (req, res) => {
-  const existing = findOwnedProduct(req.business.id, req.params.id);
+productRouter.patch('/:id', async (req, res) => {
+  const existing = await findOwnedProduct(req.business.id, req.params.id);
   const body = parse(productUpdateSchema, req.body);
-  if (body.sku !== undefined) assertSkuAvailable(req.business.id, body.sku, existing.id);
+  if (body.sku !== undefined) await assertSkuAvailable(req.business.id, body.sku, existing.id);
 
   const columns = {
     name: 'name',
@@ -149,37 +149,37 @@ productRouter.patch('/:id', (req, res) => {
   if (assignments.length > 0) {
     assignments.push('updated_at = ?');
     values.push(new Date().toISOString(), existing.id);
-    run(`UPDATE products SET ${assignments.join(', ')} WHERE id = ?`, ...values);
+    await run(`UPDATE products SET ${assignments.join(', ')} WHERE id = ?`, ...values);
   }
 
-  res.json({ product: publicProduct(findOwnedProduct(req.business.id, existing.id)) });
+  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
 // Archive rather than delete: transaction items reference this row, and Phase 3
 // requires history to survive catalog changes.
-productRouter.post('/:id/archive', (req, res) => {
-  const existing = findOwnedProduct(req.business.id, req.params.id);
-  run(
+productRouter.post('/:id/archive', async (req, res) => {
+  const existing = await findOwnedProduct(req.business.id, req.params.id);
+  await run(
     'UPDATE products SET active = 0, updated_at = ? WHERE id = ?',
     new Date().toISOString(),
     existing.id
   );
-  res.json({ product: publicProduct(findOwnedProduct(req.business.id, existing.id)) });
+  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
-productRouter.post('/:id/restore', (req, res) => {
-  const existing = findOwnedProduct(req.business.id, req.params.id);
-  run(
+productRouter.post('/:id/restore', async (req, res) => {
+  const existing = await findOwnedProduct(req.business.id, req.params.id);
+  await run(
     'UPDATE products SET active = 1, updated_at = ? WHERE id = ?',
     new Date().toISOString(),
     existing.id
   );
-  res.json({ product: publicProduct(findOwnedProduct(req.business.id, existing.id)) });
+  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
-productRouter.delete('/:id', (req, res) => {
-  const existing = findOwnedProduct(req.business.id, req.params.id);
-  const used = queryOne(
+productRouter.delete('/:id', async (req, res) => {
+  const existing = await findOwnedProduct(req.business.id, req.params.id);
+  const used = await queryOne(
     'SELECT id FROM transaction_items WHERE product_id = ? LIMIT 1',
     existing.id
   );
@@ -189,6 +189,6 @@ productRouter.delete('/:id', (req, res) => {
       [{ field: 'active', message: 'Archive it instead to keep the history.' }]
     );
   }
-  run('DELETE FROM products WHERE id = ?', existing.id);
+  await run('DELETE FROM products WHERE id = ?', existing.id);
   res.json({ status: 'success' });
 });

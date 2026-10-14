@@ -14,8 +14,8 @@ CREATE TABLE business_locations (
   country    TEXT,
   latitude   REAL,
   longitude  REAL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  created_at TEXT NOT NULL DEFAULT now_iso(),
+  updated_at TEXT NOT NULL DEFAULT now_iso(),
 
   CHECK (length(trim(address)) BETWEEN 3 AND 400),
   CHECK (latitude IS NULL OR (latitude BETWEEN -90 AND 90)),

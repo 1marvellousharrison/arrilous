@@ -2,10 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'core/api/api_client.dart';
 import 'core/state/auth_repository.dart';
+import 'core/state/business_repository.dart';
+import 'core/state/catalog_repository.dart';
+import 'core/state/customer_repository.dart';
+import 'core/state/dashboard_repository.dart';
+import 'core/state/logistics_repository.dart';
 import 'core/state/theme_controller.dart';
+import 'core/state/transaction_repository.dart';
+import 'core/state/wallet_repository.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
+import 'features/logistics/logistics_workspace_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/auth/verify_otp_screen.dart';
 import 'features/home/home_shell_screen.dart';
@@ -41,6 +49,29 @@ class _BusinessHubAppState extends State<BusinessHubApp> {
   );
   late final AuthRepository _auth = AuthRepository(_api);
 
+  // Business-scoped state. These all resolve their owner from the session on
+  // every request, so signing out has to clear them rather than leave another
+  // account's catalog in memory.
+  late final BusinessRepository _business = BusinessRepository(_api, _auth);
+  late final CatalogRepository _catalog = CatalogRepository(_api, _auth);
+  late final CustomerRepository _customers = CustomerRepository(_api, _auth);
+  late final TransactionRepository _transactions =
+      TransactionRepository(_api, _auth);
+  late final DashboardRepository _dashboard = DashboardRepository(_api, _auth);
+  late final LogisticsRepository _logistics = LogisticsRepository(_api, _auth);
+  late final WalletRepository _wallet = WalletRepository(_api, _auth);
+
+  /// Repositories that cache data belonging to the signed-in owner.
+  List<ChangeNotifier> get _scopedRepositories => [
+        _business,
+        _catalog,
+        _customers,
+        _transactions,
+        _dashboard,
+        _logistics,
+        _wallet,
+      ];
+
   bool _booting = true;
 
   @override
@@ -51,6 +82,9 @@ class _BusinessHubAppState extends State<BusinessHubApp> {
 
   @override
   void dispose() {
+    for (final repository in _scopedRepositories) {
+      repository.dispose();
+    }
     _api.close();
     super.dispose();
   }
@@ -71,10 +105,32 @@ class _BusinessHubAppState extends State<BusinessHubApp> {
           themeMode: _theme.mode,
           theme: buildLightTheme(),
           darkTheme: buildDarkTheme(),
-          home: _booting ? const _SplashScreen() : _Root(auth: _auth, theme: _theme),
+          home: _booting
+              ? const _SplashScreen()
+              : _Root(
+                  auth: _auth,
+                  theme: _theme,
+                  business: _business,
+                  catalog: _catalog,
+                  customers: _customers,
+                  transactions: _transactions,
+                  dashboard: _dashboard,
+                  logistics: _logistics,
+                  wallet: _wallet,
+                  onSignedOut: _clearScopedState,
+                ),
         );
       },
     );
+  }
+  void _clearScopedState() {
+    _business.reset();
+    _catalog.reset();
+    _customers.reset();
+    _transactions.reset();
+    _dashboard.reset();
+    _logistics.requests = const [];
+    _wallet.reset();
   }
 }
 
@@ -124,10 +180,29 @@ class _Logo extends StatelessWidget {
 }
 
 class _Root extends StatelessWidget {
-  const _Root({required this.auth, required this.theme});
+  const _Root({
+    required this.auth,
+    required this.theme,
+    required this.business,
+    required this.catalog,
+    required this.customers,
+    required this.transactions,
+    required this.dashboard,
+    required this.logistics,
+    required this.wallet,
+    required this.onSignedOut,
+  });
 
   final AuthRepository auth;
   final ThemeController theme;
+  final BusinessRepository business;
+  final CatalogRepository catalog;
+  final CustomerRepository customers;
+  final TransactionRepository transactions;
+  final DashboardRepository dashboard;
+  final LogisticsRepository logistics;
+  final WalletRepository wallet;
+  final VoidCallback onSignedOut;
 
   @override
   Widget build(BuildContext context) {
@@ -138,7 +213,7 @@ class _Root extends StatelessWidget {
         if (user == null) {
           return LoginScreen(
             auth: auth,
-            onSignedIn: (_) {},
+            onSignedIn: (_) => onSignedOut(),
             onCreateAccount: () => _openSignUp(context),
             onForgotPassword: (identifier) => _startPasswordReset(
               context,
@@ -152,8 +227,35 @@ class _Root extends StatelessWidget {
           );
         }
 
+        // Logistics and rider workspaces are a later phase. Sending those roles
+        // into the business shell asks `GET /business` a question the server
+        // refuses for them, which used to strand the account on an error screen
+        // with no way back. Give them a real screen with a way out instead.
+        if (user.role != 'business') {
+          return LogisticsWorkspaceScreen(
+            user: user,
+            logistics: logistics,
+            wallet: wallet,
+            onOpenSettings: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => SettingsScreen(theme: theme, auth: auth, user: user),
+                ),
+              );
+            },
+          );
+        }
+
         return HomeShellScreen(
           user: user,
+          business: business,
+          catalog: catalog,
+          customers: customers,
+          transactions: transactions,
+          dashboard: dashboard,
+          logistics: logistics,
+          wallet: wallet,
+          onSignOut: auth.signOut,
           onOpenSettings: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(

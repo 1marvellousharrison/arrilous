@@ -49,32 +49,45 @@ class SettingsScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: theme.isDarkMode,
-                  onChanged: theme.setDarkMode,
-                  secondary: Icon(
-                    theme.isDarkMode
-                        ? Icons.dark_mode_outlined
-                        : Icons.light_mode_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  title: const Text(
-                    'Dark mode',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    theme.isDarkMode
-                        ? 'Using the dark charcoal theme'
-                        : 'Using the light theme',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.6),
-                    ),
-                  ),
+                Builder(
+                  builder: (context) {
+                    // The switch shows what the owner actually sees, so while
+                    // the theme follows the phone it reads dark or light with
+                    // the phone rather than sitting permanently off.
+                    final effectiveDark =
+                        Theme.of(context).brightness == Brightness.dark;
+                    return SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: effectiveDark,
+                      // An explicit tap always pins a concrete mode, which is
+                      // also what turns following-the-system off.
+                      onChanged: theme.setDarkMode,
+                      secondary: Icon(
+                        effectiveDark
+                            ? Icons.dark_mode_outlined
+                            : Icons.light_mode_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      title: const Text(
+                        'Dark mode',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        theme.isFollowingSystem
+                            ? 'Following your phone’s appearance'
+                            : effectiveDark
+                                ? 'Using the dark charcoal theme'
+                                : 'Using the light theme',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 Divider(color: Theme.of(context).dividerColor, height: 1),
                 ListTile(
@@ -89,10 +102,14 @@ class SettingsScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 12),
                   ),
                   trailing: Switch.adaptive(
-                    value: theme.mode == ThemeMode.system,
-                    onChanged: (enabled) => theme.setMode(
-                      enabled ? ThemeMode.system : theme.mode,
-                    ),
+                    value: theme.isFollowingSystem,
+                    // Turning it off keeps whatever the phone is showing right
+                    // now as an explicit choice, instead of sticking on system.
+                    onChanged: (enabled) => enabled
+                        ? theme.setMode(ThemeMode.system)
+                        : theme.setDarkMode(
+                            Theme.of(context).brightness == Brightness.dark,
+                          ),
                   ),
                 ),
               ],

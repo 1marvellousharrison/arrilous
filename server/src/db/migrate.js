@@ -1,7 +1,7 @@
 import { runMigrations, closeDb } from './index.js';
 
 try {
-  const executed = runMigrations();
+  const executed = await runMigrations();
   if (executed.length === 0) {
     console.log('No pending migrations. Database is up to date.');
   } else {
@@ -12,5 +12,5 @@ try {
   console.error(`Migration error: ${error.message}`);
   process.exitCode = 1;
 } finally {
-  closeDb();
+  await closeDb();
 }
