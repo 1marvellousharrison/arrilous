@@ -82,13 +82,16 @@ void main() {
         );
 
         expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
-        expect(find.widgetWithText(TextFormField, 'Phone number'), findsOneWidget, reason: 'spec 6 — every account carries a phone number');
+        expect(
+          find.widgetWithText(TextFormField, 'Phone number'),
+          findsNothing,
+          reason: 'the phone is collected on the business/logistics profile, not at sign-up',
+        );
 
         final fields = find.byType(TextFormField);
         await tester.enterText(fields.at(0), 'Ada Lovelace');
         await tester.enterText(fields.at(1), 'ada@example.com');
-        await tester.enterText(fields.at(2), '+2348031234567');
-        await tester.enterText(fields.at(3), 'Str0ngPass!23');
+        await tester.enterText(fields.at(2), 'Str0ngPass!23');
 
         final button = find.text('Create account');
         await tester.ensureVisible(button);
@@ -97,38 +100,10 @@ void main() {
 
         final body = jsonDecode(log.single.body) as Map<String, dynamic>;
         expect(body['email'], 'ada@example.com');
-        expect(body['phone'], '+2348031234567');
         expect(body['role'], role);
+        expect(body.containsKey('phone'), isFalse);
       });
     }
-
-    testWidgets('blocks submission when the phone number is missing', (tester) async {
-      final repo = buildRepo((_) async => json(sessionBody, status: 201));
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SignUpScreen(
-            auth: repo,
-            initialRole: 'rider',
-            onSignedIn: (_) {},
-            onBack: () {},
-          ),
-        ),
-      );
-
-      final fields = find.byType(TextFormField);
-      await tester.enterText(fields.at(0), 'Rider One');
-      await tester.enterText(fields.at(1), 'rider@example.com');
-      await tester.enterText(fields.at(3), 'Str0ngPass!23');
-
-      final button = find.text('Create account');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-
-      expect(log, isEmpty);
-      expect(find.text('Phone number is required.'), findsOneWidget);
-    });
 
     testWidgets('blocks submission when the email is empty', (tester) async {
       final repo = buildRepo((_) async => json(sessionBody, status: 201));
@@ -146,7 +121,7 @@ void main() {
 
       final fields = find.byType(TextFormField);
       await tester.enterText(fields.at(0), 'Rider One');
-      await tester.enterText(fields.at(3), 'Str0ngPass!23');
+      await tester.enterText(fields.at(2), 'Str0ngPass!23');
 
       final button = find.text('Create account');
       await tester.ensureVisible(button);

@@ -112,7 +112,6 @@ class AuthRepository extends ChangeNotifier {
     required String fullName,
     required String email,
     required String password,
-    String? phone,
     String role = 'business',
   }) async {
     final data = await _api.post(
@@ -121,7 +120,6 @@ class AuthRepository extends ChangeNotifier {
         'full_name': fullName,
         'email': email,
         'password': password,
-        if (phone != null && phone.isNotEmpty) 'phone': phone,
         'role': role,
       },
     );

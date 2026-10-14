@@ -83,34 +83,24 @@ void main() {
   });
 
   group('sign up', () {
-    test('sends the account type selected on the first screen', () async {
+    test('sends the chosen account type and no phone number', () async {
       final repo = buildRepo((_) async => json(sessionBody, status: 201));
 
       await repo.signUp(
         fullName: 'Rider One',
         email: 'rider@example.com',
         password: 'Str0ngPass!23',
-        phone: '+2348031234567',
         role: 'rider',
       );
 
       final body = jsonDecode(log.single.body) as Map<String, dynamic>;
       expect(body['role'], 'rider');
-      expect(body['phone'], '+2348031234567');
       expect(body['full_name'], 'Rider One');
-    });
-
-    test('omits the phone key when none was collected', () async {
-      final repo = buildRepo((_) async => json(sessionBody, status: 201));
-
-      await repo.signUp(
-        fullName: 'Owner',
-        email: 'owner@example.com',
-        password: 'Str0ngPass!23',
+      expect(
+        body.containsKey('phone'),
+        isFalse,
+        reason: 'the phone is collected later, on the business/logistics profile',
       );
-
-      final body = jsonDecode(log.single.body) as Map<String, dynamic>;
-      expect(body.containsKey('phone'), isFalse);
     });
   });
 

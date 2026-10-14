@@ -29,7 +29,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fullName = TextEditingController();
   final _email = TextEditingController();
-  final _phone = TextEditingController();
   final _password = TextEditingController();
 
   late final String _role = widget.initialRole;
@@ -42,7 +41,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _fullName.dispose();
     _email.dispose();
-    _phone.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -61,7 +59,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         fullName: _fullName.text.trim(),
         email: _email.text.trim(),
         password: _password.text,
-        phone: _phone.text.trim(),
         role: _role,
       );
       if (!mounted) return;
@@ -152,27 +149,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   if (text.isEmpty) return 'Email is required.';
                   if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$').hasMatch(text)) {
                     return 'Enter a valid email address.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _phone,
-                enabled: !_busy,
-                keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: 'Phone number',
-                  hintText: '+2348031234567',
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                  errorText: _err('phone'),
-                ),
-                validator: (value) {
-                  final text = (value ?? '').trim();
-                  if (text.isEmpty) return 'Phone number is required.';
-                  if (!RegExp(r'^\+?[0-9\s-]{7,}$').hasMatch(text)) {
-                    return 'Enter a valid phone number.';
                   }
                   return null;
                 },
