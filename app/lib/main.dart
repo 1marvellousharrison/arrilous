@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'core/api/api_client.dart';
@@ -19,14 +20,19 @@ import 'features/auth/verify_otp_screen.dart';
 import 'features/home/home_shell_screen.dart';
 import 'features/settings/settings_screen.dart';
 
+const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
+
 /// Backend base URL.
 ///
-/// Override per environment without editing code:
+/// On the web the app talks to its own origin (`<origin>/api/v1`) and the host
+/// proxies `/api` to the API, so one build works on any domain. Override for
+/// devices, desktop or a local preview without editing code:
 ///   flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api/v1
-const String apiBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://localhost:4000/api/v1',
-);
+final String apiBaseUrl = _apiBaseUrlOverride.isNotEmpty
+    ? _apiBaseUrlOverride
+    : kIsWeb
+        ? '${Uri.base.origin}/api/v1'
+        : 'http://localhost:4000/api/v1';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

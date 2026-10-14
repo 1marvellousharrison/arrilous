@@ -1,0 +1,33 @@
+# Render blueprint for the dee API (Express + Postgres/Supabase).
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo. Render reads
+# this file, then asks for the two secret values marked `sync: false`:
+#   DATABASE_URL  the Supabase *pooler* URL (IPv4), e.g.
+#                 postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#   CORS_ORIGINS  your Vercel site origin, e.g. https://arrilous.vercel.app
+services:
+  - type: web
+    name: dee-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Generated once by Render; the API signs its JWTs with it.
+      - key: JWT_SECRET
+        generateValue: true
+      # Supabase pooler connection string (set in the Render dashboard).
+      - key: DATABASE_URL
+        sync: false
+      # Must be an explicit origin in production (a wildcard is refused).
+      - key: CORS_ORIGINS
+        sync: false
+      - key: OTP_EXPOSE_IN_RESPONSE
+        value: "false"
