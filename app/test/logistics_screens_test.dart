@@ -1449,4 +1449,112 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  group('spec 6 — the setup form collects a usable profile', () {
+    Future<({ApiClient api, AuthRepository auth})> profilelessRider() {
+      return signInAs('rider', (request) async {
+        if (request.method == 'POST' && request.url.path.endsWith('/logistics/rider')) {
+          return json({
+            'rider': {'id': 'rider-1', 'userId': 'user-123', 'fullName': 'Ada Lovelace', 'isAvailable': false},
+            'serviceAreas': <Object>[],
+            'modes': <Object>[],
+          }, status: 201);
+        }
+        if (request.method == 'POST' && request.url.path.endsWith('/logistics/rider/areas')) {
+          return json({'serviceArea': <String, Object>{}}, status: 201);
+        }
+        if (request.url.path.endsWith('/logistics/rider')) {
+          return json({'rider': null, 'serviceAreas': <Object>[]});
+        }
+        if (request.url.path.endsWith('/logistics/requests')) {
+          return json({'deliveryRequests': <Object>[]});
+        }
+        return json(<String, Object>{});
+      });
+    }
+
+    testWidgets('categories are picked from chips and the town list follows the state', (tester) async {
+      // Tall enough that the whole setup form stays built while it is filled,
+      // so no field is disposed out from under the test.
+      tester.view.physicalSize = const Size(1200, 5200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final session = await profilelessRider();
+
+      await tester.pumpWidget(MaterialApp(
+        home: LogisticsWorkspaceScreen(
+          user: session.auth.session!.user,
+          logistics: LogisticsRepository(session.api, session.auth),
+          onOpenSettings: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set up your rider profile'), findsOneWidget);
+      expect(find.text('Category — pick one or more'), findsOneWidget);
+      // Setup shows only settings: nothing to refresh, no status and no wallet.
+      expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      expect(find.byIcon(Icons.bolt), findsNothing);
+
+      // A second category joins the first instead of replacing it.
+      await tester.ensureVisible(find.text('Courier'));
+      await tester.tap(find.text('Courier'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Food delivery'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'Courier')).selected,
+        isTrue,
+      );
+      expect(
+        tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'Food delivery')).selected,
+        isTrue,
+      );
+
+      // The town list is empty until a state is chosen.
+      expect(find.text('Choose a state first'), findsOneWidget);
+
+      final stateDropdown = find.widgetWithText(DropdownButtonFormField<String>, 'State');
+      await tester.ensureVisible(stateDropdown);
+      await tester.tap(stateDropdown);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Lagos').last);
+      await tester.pumpAndSettle();
+
+      // Only Lagos towns are offered now, so 'Kano' cannot be picked.
+      final cityDropdown = find.widgetWithText(DropdownButtonFormField<String>, 'City / town');
+      await tester.ensureVisible(cityDropdown);
+      await tester.tap(cityDropdown);
+      await tester.pumpAndSettle();
+      expect(find.text('Ikeja'), findsWidgets, reason: 'a town of Lagos is offered');
+      expect(find.text('Kano'), findsNothing, reason: 'a town of another state is not');
+      await tester.tap(find.text('Ikeja').last);
+      await tester.pumpAndSettle();
+
+      // Fill the rest and save.
+      await tester.enterText(find.widgetWithText(TextFormField, 'Phone number'), '8012345678');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What do you deliver?'),
+        'Fast bike deliveries around Lagos.',
+      );
+      await tester.ensureVisible(find.text('Create rider profile'));
+      await tester.tap(find.text('Create rider profile'));
+      await tester.pumpAndSettle();
+
+      final profilePost = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/logistics/rider'),
+      );
+      final body = jsonDecode(profilePost.body) as Map<String, dynamic>;
+      expect(body['category'], 'Courier, Food delivery', reason: 'both chosen categories are sent');
+      expect(body['phone'], '+2348012345678', reason: 'the +234 code is put back on save');
+
+      final areaPost = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/logistics/rider/areas'),
+      );
+      final areaBody = jsonDecode(areaPost.body) as Map<String, dynamic>;
+      expect(areaBody['city'], 'Ikeja');
+      expect(areaBody['state'], 'Lagos');
+    });
+  });
 }

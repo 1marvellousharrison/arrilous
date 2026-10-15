@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/api/api_client.dart';
 import '../../core/state/customer_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/phone.dart';
 import '../../widgets/common.dart';
+import '../../widgets/phone_field.dart';
 
 /// Create or edit a customer (Phase 4).
 ///
@@ -25,7 +27,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   late final TextEditingController _name =
       TextEditingController(text: widget.customer?.name ?? '');
   late final TextEditingController _phone =
-      TextEditingController(text: widget.customer?.phone ?? '');
+      TextEditingController(text: formatNationalPhone(widget.customer?.phone ?? ''));
   late final TextEditingController _email =
       TextEditingController(text: widget.customer?.email ?? '');
   late final TextEditingController _address =
@@ -73,14 +75,11 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                     (value == null || value.trim().length < 2) ? 'Enter a name.' : null,
               ),
               const SizedBox(height: AppSpacing.lg),
-              TextFormField(
+              NigerianPhoneField(
                 controller: _phone,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Phone (optional)',
-                  hintText: '+2348012345678',
-                  errorText: _fieldErrors['phone'],
-                ),
+                label: 'Phone (optional)',
+                required: false,
+                errorText: _fieldErrors['phone'],
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
@@ -145,7 +144,11 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       await widget.customers.save(
         id: widget.customer?.id,
         name: _name.text.trim(),
-        phone: _phone.text.trim(),
+        // An optional field left empty stays empty; only a real number is
+        // widened to the '+234' international form the API stores.
+        phone: _phone.text.trim().isEmpty
+            ? ''
+            : toNigerianE164(_phone.text),
         email: _email.text.trim(),
         address: _address.text.trim(),
         notes: _notes.text.trim(),

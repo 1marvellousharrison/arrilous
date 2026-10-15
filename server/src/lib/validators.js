@@ -378,11 +378,13 @@ const riderModeSchema = z.enum(['motorcycle', 'car', 'bicycle', 'other']);
 export const logisticsOrganizationSchema = z.object({
   name: z.string({ required_error: 'Organization name is required.' }).trim().min(2).max(160),
   phone: phoneSchema,
+  // A partner may serve more than one category, so the field carries the
+  // selected ones joined into a single string; the cap allows several.
   category: z
     .string({ required_error: 'Category is required.' })
     .trim()
     .min(2, 'Category must be at least 2 characters.')
-    .max(120, 'Category is too long.'),
+    .max(400, 'Category is too long.'),
   description: z
     .string({ required_error: 'Tell us what you deliver.' })
     .trim()
@@ -399,7 +401,7 @@ export const riderProfileSchema = z.object({
     .string({ required_error: 'Category is required.' })
     .trim()
     .min(2, 'Category must be at least 2 characters.')
-    .max(120, 'Category is too long.'),
+    .max(400, 'Category is too long.'),
   description: z
     .string({ required_error: 'Tell us what you deliver.' })
     .trim()

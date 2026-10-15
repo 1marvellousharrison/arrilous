@@ -3,12 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/data/nigeria.dart';
 import '../../core/state/logistics_repository.dart';
 import '../../core/state/wallet_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
+import '../../core/utils/phone.dart';
 import '../../core/utils/text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/nigeria_fields.dart';
+import '../../widgets/phone_field.dart';
 import '../wallet/wallet_screen.dart';
 import 'delivery_request_detail_screen.dart';
 import 'delivery_requests_list_screen.dart';
@@ -62,18 +66,26 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
           appBar: AppBar(
             title: Text(_isRider ? 'Rider workspace' : 'Logistics workspace'),
             actions: [
-              IconButton(tooltip: 'Refresh', onPressed: repository.load, icon: const Icon(Icons.refresh)),
-              _statusIndicator(profile),
-              if (widget.wallet != null)
-                IconButton(
-                  tooltip: 'Wallet',
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => WalletScreen(wallet: widget.wallet!)),
+              // Before the profile exists there is nothing to refresh, no status
+              // to show and no wallet to open, so setup shows only settings.
+              if (profile != null) ...[
+                IconButton(tooltip: 'Refresh', onPressed: repository.load, icon: const Icon(Icons.refresh)),
+                _statusIndicator(profile),
+                if (widget.wallet != null)
+                  IconButton(
+                    tooltip: 'Wallet',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => WalletScreen(wallet: widget.wallet!)),
+                    ),
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
                   ),
-                  icon: const Icon(Icons.account_balance_wallet_outlined),
-                ),
+              ],
               if (widget.onOpenSettings != null)
-                IconButton(tooltip: 'Settings', onPressed: widget.onOpenSettings, icon: const Icon(Icons.settings_outlined)),
+                Padding(
+                  // Keep the settings button off the screen edge.
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                  child: IconButton(tooltip: 'Settings', onPressed: widget.onOpenSettings, icon: const Icon(Icons.settings_outlined)),
+                ),
             ],
           ),
           body: profile == null
@@ -104,80 +116,13 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
   /// Spec 4/19 — a provider or rider cannot be matched at all without a
   /// location, so setup asks for one instead of creating an unfindable account.
   Widget _setup(LogisticsRepository repository) {
-    final controller = TextEditingController(text: _isRider ? widget.user.fullName : '');
-    final state = TextEditingController();
-    final city = TextEditingController();
-    final area = TextEditingController();
-    final phone = TextEditingController();
-    final category = TextEditingController();
-    final description = TextEditingController();
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      children: [
-        const SizedBox(height: AppSpacing.xxl),
-        Icon(_isRider ? Icons.pedal_bike_outlined : Icons.local_shipping_outlined, size: 52, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(height: AppSpacing.lg),
-        Text(_isRider ? 'Set up your rider profile' : 'Set up your organization', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: AppSpacing.sm),
-        Text(_isRider ? 'Create your profile, then tell us where you work so nearby businesses can find you.' : 'Create your organization, then add where you operate so nearby businesses can match you.', textAlign: TextAlign.center),
-        if (!_isRider) ...[
-          const SizedBox(height: AppSpacing.xl),
-          TextField(controller: controller, decoration: const InputDecoration(labelText: 'Organization name')),
-        ],
-        const SizedBox(height: AppSpacing.xl),
-        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number', hintText: '+2348031234567')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: category, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Category', hintText: 'e.g. Courier, bike messenger')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'What do you deliver?', hintText: 'Tell businesses what you offer')),
-        const SizedBox(height: AppSpacing.xl),
-        TextField(controller: state, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'State', hintText: 'e.g. Lagos')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: city, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'City / town', hintText: 'e.g. Ikeja')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: area, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Area (optional)', hintText: 'e.g. Allen Avenue')),
-        const SizedBox(height: AppSpacing.xl),
-        FilledButton.icon(
-          onPressed: repository.loading ? null : () async {
-            final missing = <String>[
-              if (!_isRider && controller.text.trim().isEmpty) 'organization name',
-              if (phone.text.trim().isEmpty) 'phone number',
-              if (category.text.trim().length < 2) 'category',
-              if (description.text.trim().length < 3) 'what you deliver',
-            ];
-            if (missing.isNotEmpty) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Add: ${missing.join(', ')}')),
-                );
-              }
-              return;
-            }
-            try {
-              await repository.createProfile(
-                organizationName: _isRider ? null : controller.text.trim(),
-                phone: phone.text.trim(),
-                category: category.text.trim(),
-                description: description.text.trim(),
-              );
-              if (city.text.trim().isNotEmpty) {
-                await repository.addServiceArea(
-                  city: city.text.trim(),
-                  area: area.text.trim(),
-                  state: state.text.trim(),
-                  country: 'Nigeria',
-                );
-              }
-            } on ApiException catch (error) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
-            } on NetworkException catch (error) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
-            }
-          },
-          icon: const Icon(Icons.add),
-          label: Text(_isRider ? 'Create rider profile' : 'Create organization'),
-        ),
-      ],
+    // The setup form is its own stateful widget so its text, the picked
+    // categories and the chosen state and town survive the dashboard around it
+    // rebuilding whenever the repository notifies.
+    return _LogisticsSetupForm(
+      repository: repository,
+      isRider: _isRider,
+      defaultName: widget.user.fullName,
     );
   }
 
@@ -886,22 +831,46 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
 
   /// Spec 19/20 — coverage and the published destination price.
   Future<void> _addServiceArea(LogisticsRepository repository) async {
-    final state = TextEditingController();
-    final city = TextEditingController();
     final area = TextEditingController();
+    String? state;
+    String? city;
     await _openForm(
       title: 'Add service area',
       children: [
-        TextField(controller: state, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'State', hintText: 'e.g. Lagos')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: city, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'City / town', hintText: 'e.g. Ikeja')),
-        const SizedBox(height: AppSpacing.md),
-        TextField(controller: area, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Area (optional)', hintText: 'e.g. Allen Avenue')),
+        StatefulBuilder(
+          builder: (context, setState) => Column(
+            children: [
+              NigerianStateDropdown(
+                value: state,
+                onChanged: (value) => setState(() {
+                  state = value;
+                  if (city != null && !citiesForState(value).contains(city)) {
+                    city = null;
+                  }
+                }),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              NigerianCityDropdown(
+                state: state,
+                value: city,
+                onChanged: (value) => setState(() => city = value),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(controller: area, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Area (optional)', hintText: 'e.g. Allen Avenue')),
+            ],
+          ),
+        ),
       ],
       onSubmit: () async {
-        if (city.text.trim().isEmpty) return 'Enter the city or town you cover.';
+        if (city == null || city!.trim().isEmpty) {
+          return 'Choose the city or town you cover.';
+        }
         try {
-          await repository.addServiceArea(city: city.text.trim(), area: area.text.trim(), state: state.text.trim());
+          await repository.addServiceArea(
+            city: city!.trim(),
+            area: area.text.trim(),
+            state: state?.trim() ?? '',
+          );
           return null;
         } catch (error) {
           return _report(error);
@@ -1492,6 +1461,203 @@ class _AvailabilityIndicatorState extends State<_AvailabilityIndicator> with Sin
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Spec 4/19 — a provider or rider cannot be matched at all without a phone,
+/// a category and a location, so this is the one-time profile form shown before
+/// the dashboard. It is a stateful widget so the typed details, the categories
+/// picked and the chosen state and town are not lost when the dashboard around
+/// it rebuilds.
+class _LogisticsSetupForm extends StatefulWidget {
+  const _LogisticsSetupForm({
+    required this.repository,
+    required this.isRider,
+    required this.defaultName,
+  });
+
+  final LogisticsRepository repository;
+  final bool isRider;
+  final String defaultName;
+
+  @override
+  State<_LogisticsSetupForm> createState() => _LogisticsSetupFormState();
+}
+
+/// The categories a delivery partner or rider can offer. They may pick more
+/// than one; the chosen set is joined into the single category string the API
+/// stores.
+const List<String> _logisticsCategories = [
+  'Courier',
+  'Bike messenger',
+  'Food delivery',
+  'Package delivery',
+  'Grocery delivery',
+  'Pharmacy delivery',
+  'Document delivery',
+  'E-commerce fulfilment',
+  'Freight / haulage',
+  'Moving / relocation',
+  'Ride hailing',
+  'Errand runner',
+  'Cold chain',
+  'Bulk logistics',
+];
+
+class _LogisticsSetupFormState extends State<_LogisticsSetupForm> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.isRider ? widget.defaultName : '');
+  final _phone = TextEditingController();
+  final _description = TextEditingController();
+  final _area = TextEditingController();
+  final Set<String> _categories = <String>{};
+  String? _state;
+  String? _city;
+
+  @override
+  void dispose() {
+    for (final controller in [_name, _phone, _description, _area]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final missing = <String>[
+      if (!widget.isRider && _name.text.trim().isEmpty) 'organization name',
+      if (!isValidNigerianPhone(_phone.text)) 'phone number',
+      if (_categories.isEmpty) 'category',
+      if (_description.text.trim().length < 3) 'what you deliver',
+    ];
+    if (missing.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Add: ${missing.join(', ')}')),
+      );
+      return;
+    }
+    try {
+      await widget.repository.createProfile(
+        organizationName: widget.isRider ? null : _name.text.trim(),
+        phone: toNigerianE164(_phone.text),
+        category: _categories.join(', '),
+        description: _description.text.trim(),
+      );
+      if (_city != null && _city!.trim().isNotEmpty) {
+        await widget.repository.addServiceArea(
+          city: _city!.trim(),
+          area: _area.text.trim(),
+          state: _state?.trim() ?? '',
+          country: 'Nigeria',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } on NetworkException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      children: [
+        const SizedBox(height: AppSpacing.xxl),
+        Icon(
+          widget.isRider ? Icons.pedal_bike_outlined : Icons.local_shipping_outlined,
+          size: 52,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Text(
+          widget.isRider ? 'Set up your rider profile' : 'Set up your organization',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          widget.isRider
+              ? 'Create your profile, then tell us where you work so nearby businesses can find you.'
+              : 'Create your organization, then add where you operate so nearby businesses can match you.',
+          textAlign: TextAlign.center,
+        ),
+        if (!widget.isRider) ...[
+          const SizedBox(height: AppSpacing.xl),
+          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Organization name')),
+        ],
+        const SizedBox(height: AppSpacing.xl),
+        NigerianPhoneField(controller: _phone),
+        const SizedBox(height: AppSpacing.lg),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Category — pick one or more',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final option in _logisticsCategories)
+              FilterChip(
+                label: Text(option),
+                selected: _categories.contains(option),
+                onSelected: (selected) => setState(() {
+                  if (selected) {
+                    _categories.add(option);
+                  } else {
+                    _categories.remove(option);
+                  }
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        TextField(
+          controller: _description,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'What do you deliver?',
+            hintText: 'Tell businesses what you offer',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        NigerianStateDropdown(
+          value: _state,
+          onChanged: (value) => setState(() {
+            _state = value;
+            if (_city != null && !citiesForState(value).contains(_city)) {
+              _city = null;
+            }
+          }),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        NigerianCityDropdown(
+          state: _state,
+          value: _city,
+          onChanged: (value) => setState(() => _city = value),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextField(
+          controller: _area,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Area (optional)', hintText: 'e.g. Allen Avenue'),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        FilledButton.icon(
+          onPressed: widget.repository.loading ? null : _submit,
+          icon: const Icon(Icons.add),
+          label: Text(widget.isRider ? 'Create rider profile' : 'Create organization'),
+        ),
+      ],
     );
   }
 }

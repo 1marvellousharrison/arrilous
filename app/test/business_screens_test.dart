@@ -157,6 +157,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Picks [value] from the dropdown carrying [label] — state and city are
+  /// lists now, so a location is chosen rather than typed.
+  Future<void> pickDropdown(
+    WidgetTester tester,
+    String label,
+    String value,
+  ) async {
+    final dropdown =
+        find.widgetWithText(DropdownButtonFormField<String>, label);
+    await tester.ensureVisible(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(value).last);
+    await tester.pumpAndSettle();
+  }
+
   /// Spec 6 — a business profile is only complete with a phone number, a
   /// category and a description of what is sold, so every setup test fills
   /// them alongside the name.
@@ -189,14 +206,9 @@ void main() {
       find.widgetWithText(TextFormField, 'Area'),
       area,
     );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'City'),
-      city,
-    );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'State'),
-      state,
-    );
+    // The state is chosen first; the city list is the towns of that state.
+    await pickDropdown(tester, 'State', state);
+    await pickDropdown(tester, 'City / town', city);
   }
 
   setUp(() {
@@ -490,8 +502,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter the area your shop is in.'), findsOneWidget);
-      expect(find.text('Enter the city.'), findsOneWidget);
-      expect(find.text('Enter the state.'), findsOneWidget);
+      // State and city are chosen from lists now, so the messages name the
+      // list rather than asking for a typed word.
+      expect(find.text('Select a state.'), findsOneWidget);
+      expect(find.text('Choose a state first.'), findsOneWidget);
       expect(
         find.text('Country (optional)'),
         findsNothing,

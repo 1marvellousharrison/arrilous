@@ -1,14 +1,18 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/data/nigeria.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/logo_service.dart';
 import '../../core/state/business_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/phone.dart';
 import '../../widgets/common.dart';
+import '../../widgets/nigeria_fields.dart';
+import '../../widgets/phone_field.dart';
 
 /// The categories an owner picks from at setup. A dropdown rather than a free
 /// text field, so the same trade is spelled the same way on every dashboard.
@@ -29,49 +33,6 @@ const businessCategories = <String>[
   'Services',
   'Other',
 ];
-
-/// The ten digits a Nigerian mobile number holds behind the '+234' code the
-/// phone field shows. Pasting a whole number ('+234 803 1234 567') folds down
-/// to exactly those digits.
-String _phoneNational(String raw) {
-  final digits = raw.replaceAll(RegExp(r'\D'), '');
-  if (digits.length > 10 && digits.startsWith('234')) return digits.substring(3);
-  if (digits.length > 10 && digits.startsWith('0')) return digits.substring(1); // ADD THIS
-  return digits;
-}
-
-/// The shape of those ten digits once the code is off: a Nigerian mobile
-/// number starts 7, 8 or 9 and carries no more digits after that.
-final _nigerianNational = RegExp(r'^[789]\d{9}$');
-
-/// The ten national digits grouped the way the field presents them, three
-/// digits then three then four: '+234 803 123 4567' reads as '803 123 4567'.
-String _formatNationalPhone(String raw) {
-  var digits = raw.replaceAll(RegExp(r'\D'), '');
-  if (digits.length > 10 && digits.startsWith('234')) digits = digits.substring(3);
-  if (digits.length > 10 && digits.startsWith('0')) digits = digits.substring(1); // ADD THIS
-  if (digits.length > 10) digits = digits.substring(0, 10);
-  final buffer = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i == 3 || i == 6) buffer.write(' ');
-    buffer.write(digits[i]);
-  }
-  return buffer.toString();
-}
-
-/// Keeps the phone field on the strict '+234 *** *** ****' shape: the '+234'
-/// code lives in the field's prefix and the field itself only ever holds the
-/// ten national digits, spaced 3-3-4 as they are typed.
-class _NigerianPhoneFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    final formatted = _formatNationalPhone(newValue.text);
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-}
 
 /// Phase 1 + 2 — the two-step owner setup flow.
 ///
@@ -136,8 +97,10 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
   // Step 2
   final _address = TextEditingController();
   final _area = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
+  // State and city are picked from dropdowns, so they are plain values rather
+  // than controllers: the city list is rebuilt whenever the state changes.
+  String? _city;
+  String? _state;
   DeviceCoordinates? _coordinates;
   bool _locating = false;
   LocationUnavailable? _locationProblem;
@@ -170,7 +133,7 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
             .map((line) => line.trim())
             .where((line) => line.isNotEmpty),
       );
-      _phone.text = _formatNationalPhone(existing.phone ?? '');
+      _phone.text = formatNationalPhone(existing.phone ?? '');
       _email.text = existing.email ?? '';
       _logo = existing.logoUrl;
       _logoBytes = BusinessLogoAvatar.decode(existing.logoUrl);
@@ -178,8 +141,8 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
       if (location != null) {
         _address.text = location.address;
         _area.text = location.area ?? '';
-        _city.text = location.city ?? '';
-        _state.text = location.state ?? '';
+        _city = location.city;
+        _state = location.state;
         if (location.hasCoordinates) {
           _coordinates = DeviceCoordinates(
             latitude: location.latitude!,
@@ -200,8 +163,6 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
       _email,
       _address,
       _area,
-      _city,
-      _state,
     ]) {
       controller.dispose();
     }
@@ -452,27 +413,12 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
         ],
       ),
       const SizedBox(height: AppSpacing.lg),
-      TextFormField(
+      // The field is pinned to '+234 *** *** ****': the code sits in the
+      // prefix and the shared field keeps the ten national digits, spaced
+      // 3-3-4, as the only thing that can ever be typed or pasted here.
+      NigerianPhoneField(
         controller: _phone,
-        keyboardType: TextInputType.phone,
-        // The field is pinned to '+234 *** *** ****': the code sits in the
-        // prefix and the formatter keeps the ten national digits, spaced
-        // 3-3-4, as the only thing that can ever be typed or pasted here.
-        inputFormatters: [_NigerianPhoneFormatter()],
-        decoration: InputDecoration(
-          labelText: 'Phone number',
-          prefixText: '+234 ',
-          hintText: '803 123 4567',
-          errorText: _fieldErrors['phone'],
-        ),
-        validator: (value) {
-          final text = (value ?? '').trim();
-          if (text.isEmpty) return 'Phone number is required.';
-          if (!_nigerianNational.hasMatch(_phoneNational(text))) {
-            return 'Type the 10 digits after +234, e.g. 803 123 4567.';
-          }
-          return null;
-        },
+        errorText: _fieldErrors['phone'],
       ),
       const SizedBox(height: AppSpacing.lg),
       TextFormField(
@@ -561,28 +507,23 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
             : null,
       ),
       const SizedBox(height: AppSpacing.lg),
-      TextFormField(
-        controller: _city,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          labelText: 'City',
-          errorText: _fieldErrors['city'],
-        ),
-        validator: (value) => (value == null || value.trim().isEmpty)
-            ? 'Enter the city.'
-            : null,
+      NigerianStateDropdown(
+        value: _state,
+        errorText: _fieldErrors['state'],
+        onChanged: (value) => setState(() {
+          _state = value;
+          // A town from the previous state no longer belongs here.
+          if (_city != null && !citiesForState(value).contains(_city)) {
+            _city = null;
+          }
+        }),
       ),
       const SizedBox(height: AppSpacing.lg),
-      TextFormField(
-        controller: _state,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          labelText: 'State',
-          errorText: _fieldErrors['state'],
-        ),
-        validator: (value) => (value == null || value.trim().isEmpty)
-            ? 'Enter the state.'
-            : null,
+      NigerianCityDropdown(
+        state: _state,
+        value: _city,
+        errorText: _fieldErrors['city'],
+        onChanged: (value) => setState(() => _city = value),
       ),
       const SizedBox(height: AppSpacing.xl),
       FilledButton(
@@ -631,7 +572,7 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
       // what gets saved — their category works exactly like a listed one.
       final category =
           _category == 'Other' ? _otherCategory.text.trim() : (_category?.trim() ?? '');
-      final phone = '+234${_phoneNational(_phone.text)}';
+      final phone = toNigerianE164(_phone.text);
       if (_isEditing) {
         await widget.business.updateProfile(
           businessName: _name.text.trim(),
@@ -683,8 +624,8 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
       await widget.business.saveLocation(
         address: _address.text.trim(),
         area: _area.text.trim(),
-        city: _city.text.trim(),
-        state: _state.text.trim(),
+        city: _city?.trim() ?? '',
+        state: _state?.trim() ?? '',
         latitude: _coordinates?.latitude,
         longitude: _coordinates?.longitude,
       );
