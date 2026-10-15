@@ -46,9 +46,8 @@ export const signupSchema = z.object({
     .min(2, 'Full name is required.')
     .max(120, 'Full name is too long.'),
   email: emailSchema,
-  // Spec 6 — a phone number is part of the account, not an optional extra:
-  // riders, partners and businesses are all reachable by phone.
-  phone: phoneSchema,
+  // The phone number is now collected at the business/logistics profile step.
+  phone: phoneSchema.optional().nullable(),
   password: passwordSchema,
   role: z.enum(ROLES).default('business'),
 });

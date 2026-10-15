@@ -39,12 +39,12 @@ describe('signup', () => {
     assert.equal(res.body.user.phone, phone);
   });
 
-  test('a phone number is required to sign up', async () => {
+  test('signs up successfully without a phone number', async () => {
     const res = await api('POST', '/auth/signup', {
       body: { full_name: 'No Phone', email: uniqueEmail('nophone'), password: 'Str0ngPass!23' },
     });
-    assert.equal(res.status, 422);
-    assert.equal(res.body.error.details[0].field, 'phone');
+    assert.equal(res.status, 201);
+    assert.equal(res.body.user.phone, null);
   });
 
   test('never leaks the password hash', async () => {
