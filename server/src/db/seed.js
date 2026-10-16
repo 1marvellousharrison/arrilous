@@ -3,6 +3,7 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { closeDb, run, runMigrations, transaction } from './index.js';
 import { hashPassword } from '../lib/password.js';
+import { generateBusinessCode } from '../lib/staff.js';
 
 /**
  * Phase 17 — development seed data.
@@ -230,17 +231,20 @@ export async function seedDatabase({ force = false } = {}) {
     );
 
     // The category matches the app's dropdown list, so the seeded business never
-    // shows a second fashion option beside 'Fashion & Clothing'.
+    // shows a second fashion option beside 'Fashion & Clothing'. The business
+    // code is the stable prefix every staff code is built from.
+    const businessCode = await generateBusinessCode(SEED_BUSINESS_NAME);
     await run(
       `INSERT INTO businesses
          (id, owner_user_id, business_name, business_category, business_description,
-          phone, email, created_at, updated_at)
-       VALUES (?, ?, ?, 'Fashion & Clothing', 'Clothing and accessories.', ?, ?, ?, ?)`,
+          phone, email, business_code, created_at, updated_at)
+       VALUES (?, ?, ?, 'Fashion & Clothing', 'Clothing and accessories.', ?, ?, ?, ?, ?)`,
       businessId,
       userId,
       SEED_BUSINESS_NAME,
       '+2348030000000',
       SEED_OWNER_EMAIL,
+      businessCode,
       createdAt,
       createdAt
     );
@@ -323,8 +327,8 @@ export async function seedDatabase({ force = false } = {}) {
            (id, business_id, customer_id, transaction_number, source, subtotal_kobo,
             discount_kobo, delivery_fee_kobo, total_kobo, notes, delivery_required,
             delivery_address, order_status, payment_status, delivery_status,
-            completion_status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            completion_status, created_by_user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         transactionId,
         businessId,
         customerByKey[scenario.customer].id,
@@ -340,6 +344,7 @@ export async function seedDatabase({ force = false } = {}) {
         status.payment,
         status.delivery,
         status.completion,
+        userId,
         txCreatedAt,
         updatedAt
       );

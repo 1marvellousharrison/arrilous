@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { queryOne, queryAll, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusiness } from '../middleware/business.js';
+import { requireBusiness, requireOwner } from '../middleware/business.js';
 import { conflict, notFound, validationFailed, badRequest } from '../lib/errors.js';
 import {
   productCreateSchema,
@@ -96,7 +96,7 @@ productRouter.get('/categories', async (req, res) => {
   res.json({ categories: rows.map((row) => row.category) });
 });
 
-productRouter.post('/', async (req, res) => {
+productRouter.post('/', requireOwner, async (req, res) => {
   const body = parse(productCreateSchema, req.body);
   await assertSkuAvailable(req.business.id, body.sku, null);
 
@@ -122,7 +122,7 @@ productRouter.get('/:id', async (req, res) => {
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, req.params.id)) });
 });
 
-productRouter.patch('/:id', async (req, res) => {
+productRouter.patch('/:id', requireOwner, async (req, res) => {
   const existing = await findOwnedProduct(req.business.id, req.params.id);
   const body = parse(productUpdateSchema, req.body);
   if (body.sku !== undefined) await assertSkuAvailable(req.business.id, body.sku, existing.id);
@@ -157,7 +157,7 @@ productRouter.patch('/:id', async (req, res) => {
 
 // Archive rather than delete: transaction items reference this row, and Phase 3
 // requires history to survive catalog changes.
-productRouter.post('/:id/archive', async (req, res) => {
+productRouter.post('/:id/archive', requireOwner, async (req, res) => {
   const existing = await findOwnedProduct(req.business.id, req.params.id);
   await run(
     'UPDATE products SET active = 0, updated_at = ? WHERE id = ?',
@@ -167,7 +167,7 @@ productRouter.post('/:id/archive', async (req, res) => {
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
-productRouter.post('/:id/restore', async (req, res) => {
+productRouter.post('/:id/restore', requireOwner, async (req, res) => {
   const existing = await findOwnedProduct(req.business.id, req.params.id);
   await run(
     'UPDATE products SET active = 1, updated_at = ? WHERE id = ?',
@@ -177,7 +177,7 @@ productRouter.post('/:id/restore', async (req, res) => {
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
-productRouter.delete('/:id', async (req, res) => {
+productRouter.delete('/:id', requireOwner, async (req, res) => {
   const existing = await findOwnedProduct(req.business.id, req.params.id);
   const used = await queryOne(
     'SELECT id FROM transaction_items WHERE product_id = ? LIMIT 1',

@@ -2,8 +2,9 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { queryOne, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusinessOwner, requireBusiness, findBusinessForUser } from '../middleware/business.js';
+import { requireBusinessOwner, requireBusiness, requireOwner, findBusinessForUser } from '../middleware/business.js';
 import { conflict, validationFailed } from '../lib/errors.js';
+import { generateBusinessCode } from '../lib/staff.js';
 import {
   businessCreateSchema,
   businessUpdateSchema,
@@ -30,6 +31,7 @@ export function publicBusiness(row) {
     phone: row.phone,
     email: row.email,
     logoUrl: row.logo_url,
+    businessCode: row.business_code ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -66,10 +68,13 @@ async function createBusiness(userId, body) {
     throw conflict('This account already has a business profile.', 'business_exists');
   }
   const id = crypto.randomUUID();
+  // The stable prefix every staff code is built from, snapshotted once so a
+  // later rename never invalidates a staff's permanent login.
+  const businessCode = await generateBusinessCode(body.business_name);
   await run(
     `INSERT INTO businesses (id, owner_user_id, business_name, business_category,
-                             business_description, phone, email, logo_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                             business_description, phone, email, logo_url, business_code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     userId,
     body.business_name,
@@ -77,7 +82,8 @@ async function createBusiness(userId, body) {
     body.business_description ?? null,
     body.phone ?? null,
     body.email ?? null,
-    body.logo_url ?? null
+    body.logo_url ?? null,
+    businessCode
   );
   return await queryOne('SELECT * FROM businesses WHERE id = ?', id);
 }
@@ -138,7 +144,7 @@ businessRouter.post('/', requireAuth, requireBusinessOwner, async (req, res) => 
   res.status(201).json({ business: await businessWithLocation(business) });
 });
 
-businessRouter.patch('/', requireAuth, requireBusiness, async (req, res) => {
+businessRouter.patch('/', requireAuth, requireBusiness, requireOwner, async (req, res) => {
   const body = parse(businessUpdateSchema, req.body);
   const columns = {
     business_name: 'business_name',
@@ -171,7 +177,7 @@ businessRouter.patch('/', requireAuth, requireBusiness, async (req, res) => {
   });
 });
 
-businessRouter.get('/location', requireAuth, requireBusiness, async (req, res) => {
+businessRouter.get('/location', requireAuth, requireBusiness, requireOwner, async (req, res) => {
   const location = await queryOne(
     'SELECT * FROM business_locations WHERE business_id = ?',
     req.business.id
@@ -184,7 +190,7 @@ businessRouter.get('/location', requireAuth, requireBusiness, async (req, res) =
 // the whole `business` (with the location nested) so a single write can refresh
 // the client's cached profile. Every other business write returns `business`,
 // and the Flutter client adopts that shape to avoid a redundant refetch.
-businessRouter.put('/location', requireAuth, requireBusiness, async (req, res) => {
+businessRouter.put('/location', requireAuth, requireBusiness, requireOwner, async (req, res) => {
   const body = parse(locationSchema, req.body);
   const location = await upsertLocation(req.business.id, body);
   res.json({

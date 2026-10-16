@@ -24,6 +24,14 @@ const NOT_CANCELLED = "business_id = ? AND order_status <> 'cancelled'";
 dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) => {
   const businessId = req.business.id;
 
+  // A staff's home shows their own sales only; the owner sees the whole business.
+  // Catalog and logistics figures stay business-wide — a staff can view the
+  // catalog and still works the delivery desk, so those counts are not theirs to
+  // have hidden.
+  const staffId = req.staff ? req.auth.userId : null;
+  const scopeSql = staffId ? ' AND created_by_user_id = ?' : '';
+  const scopeParams = staffId ? [businessId, staffId] : [businessId];
+
   // What was sold, what was actually collected, and what is still owed.
   const money = await queryOne(
     `SELECT
@@ -34,8 +42,8 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
         COALESCE(SUM(CASE WHEN payment_status IN ('unpaid', 'payment_pending')
                           THEN total_kobo ELSE 0 END), 0) AS "outstandingKobo"
        FROM transactions
-      WHERE ${NOT_CANCELLED}`,
-    businessId
+      WHERE ${NOT_CANCELLED}${scopeSql}`,
+    ...scopeParams
   );
 
   // One pass over the whole table for every state the dashboard reports.
@@ -59,8 +67,8 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
         COALESCE(SUM(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END), 0)
           AS cancelled
        FROM transactions
-      WHERE business_id = ?`,
-    businessId
+      WHERE business_id = ?${scopeSql}`,
+    ...scopeParams
   );
 
   // Catalog and customer counts for the business card. Counting them here rather
@@ -78,10 +86,10 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
 
   const recent = (await queryAll(
     `SELECT * FROM transactions
-      WHERE business_id = ?
+      WHERE business_id = ?${scopeSql}
       ORDER BY created_at DESC
       LIMIT 8`,
-    businessId
+    ...scopeParams
   )).map((row) => publicTransaction(row));
 
   // Spec 41 — the logistics strip. Every number is an aggregate, and the

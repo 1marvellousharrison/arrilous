@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { queryOne, queryAll, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusiness } from '../middleware/business.js';
+import { requireBusiness, requireOwner } from '../middleware/business.js';
 import { notFound, validationFailed } from '../lib/errors.js';
 import {
   customerCreateSchema,
@@ -127,7 +127,7 @@ customerRouter.get('/:id', async (req, res) => {
   });
 });
 
-customerRouter.patch('/:id', async (req, res) => {
+customerRouter.patch('/:id', requireOwner, async (req, res) => {
   const existing = await findOwnedCustomer(req.business.id, req.params.id);
   const body = parse(customerUpdateSchema, req.body);
 

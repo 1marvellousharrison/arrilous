@@ -29,6 +29,7 @@ import {
   refreshSchema,
   resetPasswordSchema,
   toFieldErrors,
+  STAFF_CODE_PATTERN,
 } from '../lib/validators.js';
 import { maskEmail, maskPhone } from '../lib/normalise.js';
 
@@ -53,10 +54,26 @@ export function publicUser(row) {
   };
 }
 
+/**
+ * Resolves a sign-in identifier to a user. Three forms are accepted:
+ *   * email — matched exactly (already normalised to lower case);
+ *   * staff code — resolved through staff_members, and only while the link is
+ *     active, so an invited or disabled staff can never sign in;
+ *   * phone — the fallback, matched in E.164 form.
+ */
 async function findUserByIdentifier(identifier) {
-  return identifier.includes('@')
-    ? await queryOne('SELECT * FROM users WHERE email = ?', identifier)
-    : await queryOne('SELECT * FROM users WHERE phone = ?', identifier);
+  if (identifier.includes('@')) {
+    return queryOne('SELECT * FROM users WHERE email = ?', identifier);
+  }
+  if (STAFF_CODE_PATTERN.test(identifier)) {
+    return queryOne(
+      `SELECT u.* FROM staff_members sm
+         JOIN users u ON u.id = sm.user_id
+        WHERE sm.staff_code = ? AND sm.status = 'active'`,
+      identifier
+    );
+  }
+  return queryOne('SELECT * FROM users WHERE phone = ?', identifier);
 }
 
 /** Creates an opaque refresh token; only its SHA-256 hash is persisted. */
@@ -152,14 +169,14 @@ authRouter.post(
 
     if (!user) {
       await fakeVerify();
-      throw unauthorized('Incorrect email/phone or password.');
+      throw unauthorized('Incorrect email, phone, staff code or password.');
     }
     if (user.status !== 'active') {
       throw unauthorized('This account has been suspended.');
     }
 
     const ok = await verifyPassword(body.password, user.password_hash);
-    if (!ok) throw unauthorized('Incorrect email/phone or password.');
+    if (!ok) throw unauthorized('Incorrect email, phone, staff code or password.');
 
     return res.json(await issueSession(user, req));
   }

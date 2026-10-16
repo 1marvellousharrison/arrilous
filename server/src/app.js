@@ -9,6 +9,7 @@ import { transactionRouter } from './routes/transactions.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { logisticsRouter } from './routes/logistics.js';
 import { walletRouter } from './routes/wallet.js';
+import { staffRouter } from './routes/staff.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { runMigrations, queryOne } from './db/index.js';
 
@@ -57,6 +58,7 @@ export async function createApp({ migrate = true } = {}) {
   app.use('/api/v1/dashboard', dashboardRouter);
   app.use('/api/v1/logistics', logisticsRouter);
   app.use('/api/v1/wallet', walletRouter);
+  app.use('/api/v1/staff', staffRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

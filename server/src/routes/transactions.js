@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import { queryOne, queryAll, run, transaction } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
-import { notFound, badRequest, validationFailed } from '../lib/errors.js';
+import { notFound, badRequest, forbidden, validationFailed } from '../lib/errors.js';
+import { creditSaleToWallet } from '../lib/wallet.js';
 import {
   transactionCreateSchema,
   transactionListQuerySchema,
@@ -19,6 +20,7 @@ import {
   currentAxes,
   historyFor,
   recordCreation,
+  recordNote,
   recordStatusDiff,
 } from '../lib/history.js';
 
@@ -43,6 +45,7 @@ export function publicTransaction(row, { items = null } = {}) {
     totalKobo: row.total_kobo,
     notes: row.notes,
     deliveryAddress: row.delivery_address,
+    createdByUserId: row.created_by_user_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...publicStatuses(row),
@@ -63,14 +66,31 @@ export function publicItem(row) {
   };
 }
 
-async function findOwnedTransaction(businessId, transactionId) {
-  const row = await queryOne(
-    'SELECT * FROM transactions WHERE id = ? AND business_id = ?',
-    transactionId,
-    businessId
-  );
+/**
+ * Loads a transaction scoped to the business, and — when the caller is a staff —
+ * also to that staff's own sales. A staff reaching for a colleague's sale gets
+ * the same 404 as a stranger, so the record's existence is not even leaked.
+ */
+async function findOwnedTransaction(businessId, transactionId, { staffUserId = null } = {}) {
+  const row = staffUserId
+    ? await queryOne(
+        'SELECT * FROM transactions WHERE id = ? AND business_id = ? AND created_by_user_id = ?',
+        transactionId,
+        businessId,
+        staffUserId
+      )
+    : await queryOne(
+        'SELECT * FROM transactions WHERE id = ? AND business_id = ?',
+        transactionId,
+        businessId
+      );
   if (!row) throw notFound('That transaction does not exist.');
   return row;
+}
+
+/** The staff's user id when the caller is a staff, otherwise null (the owner). */
+function transactionScope(req) {
+  return req.staff ? req.auth.userId : null;
 }
 
 async function itemsFor(transactionId) {
@@ -192,8 +212,9 @@ transactionRouter.post('/', async (req, res) => {
       `INSERT INTO transactions
          (id, business_id, customer_id, transaction_number, source, subtotal_kobo,
           discount_kobo, delivery_fee_kobo, total_kobo, notes, delivery_required,
-          delivery_address, order_status, payment_status, delivery_status, completion_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, 'open')`,
+          delivery_address, order_status, payment_status, delivery_status,
+          completion_status, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, 'open', ?)`,
       transactionId,
       businessId,
       body.customer_id ?? null,
@@ -206,7 +227,8 @@ transactionRouter.post('/', async (req, res) => {
       body.notes ?? null,
       body.delivery_required ? 1 : 0,
       body.delivery_address ?? null,
-      deliveryStatus
+      deliveryStatus,
+      req.auth.userId
     );
 
     for (const item of items) {
@@ -250,6 +272,13 @@ transactionRouter.get('/', async (req, res) => {
   const where = ['business_id = ?'];
   const params = [req.business.id];
 
+  // A staff sees only the sales they personally recorded.
+  const scopedStaffId = transactionScope(req);
+  if (scopedStaffId) {
+    where.push('created_by_user_id = ?');
+    params.push(scopedStaffId);
+  }
+
   const filterMap = {
     order_status: 'order_status',
     payment_status: 'payment_status',
@@ -292,7 +321,9 @@ transactionRouter.get('/', async (req, res) => {
 });
 
 transactionRouter.get('/:id', async (req, res) => {
-  const row = await findOwnedTransaction(req.business.id, req.params.id);
+  const row = await findOwnedTransaction(req.business.id, req.params.id, {
+    staffUserId: transactionScope(req),
+  });
   const customer = row.customer_id
     ? await queryOne('SELECT * FROM customers WHERE id = ?', row.customer_id)
     : null;
@@ -309,9 +340,22 @@ transactionRouter.get('/:id', async (req, res) => {
 
 // PATCH /api/v1/transactions/:id/statuses — Phase 7 + Phase 8 history.
 transactionRouter.patch('/:id/statuses', async (req, res) => {
-  const current = await findOwnedTransaction(req.business.id, req.params.id);
+  const current = await findOwnedTransaction(req.business.id, req.params.id, {
+    staffUserId: transactionScope(req),
+  });
   const body = parse(statusUpdateSchema, req.body);
   let changed = [];
+
+  // A staff may annotate a sale but never move its status. The client hides the
+  // controls, but the API enforces it: only a note is accepted from a staff.
+  const wantsStatusChange =
+    body.orderStatus !== undefined ||
+    body.paymentStatus !== undefined ||
+    body.deliveryStatus !== undefined ||
+    body.completionStatus !== undefined;
+  if (req.staff && wantsStatusChange) {
+    throw forbidden('Staff can add notes to a sale, but cannot change its status.');
+  }
 
   const next = {
     orderStatus: body.orderStatus ?? current.order_status,
@@ -351,9 +395,16 @@ transactionRouter.patch('/:id/statuses', async (req, res) => {
     completionStatus: current.completion_status,
   });
 
-  // The column update and its timeline entries commit together. If the write
-  // failed halfway the history would claim a change that the columns do not
-  // show, which is exactly the kind of lie an audit trail must not tell.
+  // A sale is credited to the owner's wallet exactly once, when its payment
+  // first becomes 'paid'. The transition table makes this a one-way door, so
+  // this guard and the ledger's unique reference keep a double credit impossible.
+  const creditOnPaid =
+    current.payment_status !== 'paid' && next.paymentStatus === 'paid';
+
+  // The column update, its timeline entries and the wallet credit commit
+  // together. If the write failed halfway the history would claim a change that
+  // the columns do not show, which is exactly the kind of lie an audit trail
+  // must not tell.
   await transaction(async () => {
     await run(
       `UPDATE transactions
@@ -383,11 +434,29 @@ transactionRouter.patch('/:id/statuses', async (req, res) => {
       },
       note: body.note ?? null,
     });
+
+    // A note with no status move — a staff annotation, or an owner's plain note
+    // — still belongs on the timeline. When a status did move, the note is
+    // already carried on those entries, so it is not written twice.
+    if (changed.length === 0 && body.note) {
+      await recordNote({
+        transactionId: current.id,
+        businessId: req.business.id,
+        userId: req.auth.userId,
+        note: body.note,
+      });
+    }
+
+    if (creditOnPaid) {
+      await creditSaleToWallet(req.business, current);
+    }
   });
 
   res.json({
     transaction: publicTransaction(
-      await findOwnedTransaction(req.business.id, current.id),
+      await findOwnedTransaction(req.business.id, current.id, {
+        staffUserId: transactionScope(req),
+      }),
       { items: await itemsFor(current.id) }
     ),
     changed,

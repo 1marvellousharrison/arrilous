@@ -8,7 +8,15 @@ import {
   COMPLETION_STATUSES,
 } from './statuses.js';
 
+// Roles a person may choose when they create their own account. `staff` is
+// deliberately absent: a staff login is always created for them by a business
+// owner (see routes/staff.js), never self-selected at signup.
 export const ROLES = ['business', 'logistics_partner', 'rider'];
+
+// The permanent login ID of a staff account, e.g. "ABC47-03": a stable business
+// code (3 letters + 2 digits) plus a per-business sequence.
+export const BUSINESS_CODE_PATTERN = /^[A-Z]{3}[0-9]{2}$/;
+export const STAFF_CODE_PATTERN = /^[A-Z]{3}[0-9]{2}-[0-9]{2}$/;
 
 export const emailSchema = z
   .string({ required_error: 'Email is required.' })
@@ -29,14 +37,25 @@ export const passwordSchema = z
   .min(8, 'Password must be at least 8 characters.')
   .max(128, 'Password must be 128 characters or fewer.');
 
+// A sign-in identifier is one of three things: an email, a phone number, or a
+// staff code. The staff code is checked before the phone path so its digits and
+// letters are not mangled by the E.164 normaliser, and it is upper-cased so a
+// staff can type it however they like.
 export const identifierSchema = z
-  .string({ required_error: 'Enter your email or phone number.' })
+  .string({ required_error: 'Enter your email, phone number or staff code.' })
   .trim()
-  .min(3, 'Enter your email or phone number.')
-  .transform((value) => (value.includes('@') ? normaliseEmail(value) : normalisePhone(value)))
+  .min(3, 'Enter your email, phone number or staff code.')
+  .transform((value) => {
+    if (value.includes('@')) return normaliseEmail(value);
+    if (STAFF_CODE_PATTERN.test(value.toUpperCase())) return value.toUpperCase();
+    return normalisePhone(value);
+  })
   .refine(
-    (value) => /^\+[1-9]\d{6,14}$/.test(value) || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value),
-    'Enter a valid email address or phone number.'
+    (value) =>
+      STAFF_CODE_PATTERN.test(value) ||
+      /^\+[1-9]\d{6,14}$/.test(value) ||
+      /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value),
+    'Enter a valid email address, phone number or staff code.'
   );
 
 export const signupSchema = z.object({
@@ -359,14 +378,17 @@ export const statusUpdateSchema = z
   })
   // Counts the four axes explicitly rather than testing every value: with a
   // `note` in the shape, `{ note: "just looking" }` would otherwise satisfy a
-  // generic "some value is defined" check and silently change nothing.
+  // generic "some value is defined" check and silently change nothing. A
+  // non-empty note on its own is allowed — that is how a staff (who may not move
+  // any status) annotates a sale, and it lands on the timeline as its own entry.
   .refine(
     (value) =>
       value.orderStatus !== undefined ||
       value.paymentStatus !== undefined ||
       value.deliveryStatus !== undefined ||
-      value.completionStatus !== undefined,
-    { message: 'Send at least one status to change.' }
+      value.completionStatus !== undefined ||
+      (typeof value.note === 'string' && value.note.trim().length > 0),
+    { message: 'Send at least one status to change or a note.' }
   );
 
 // Logistics extension. These schemas keep delivery data separate from the
@@ -562,6 +584,51 @@ export const walletPayoutSchema = z.object({
 
 export const walletPayoutConfirmSchema = z.object({
   otp: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code.'),
+});
+
+// ─────────────────────────────────────────────────────────────
+// Staff accounts (docs/staff-accounts.md)
+// ─────────────────────────────────────────────────────────────
+
+const staffCodeField = z
+  .string({ required_error: 'Enter your staff code.' })
+  .trim()
+  .min(4, 'Enter your staff code.')
+  .max(16, 'That is not a valid staff code.')
+  .transform((value) => value.toUpperCase())
+  .refine((value) => STAFF_CODE_PATTERN.test(value), 'Enter a valid staff code.');
+
+// The owner adds a staff by name; the server issues the code. Nothing else about
+// the staff (password, code) is ever supplied by the owner.
+export const staffCreateSchema = z.object({
+  full_name: z
+    .string({ required_error: 'Staff name is required.' })
+    .trim()
+    .min(2, 'Staff name is required.')
+    .max(120, 'Staff name is too long.'),
+  phone: phoneSchema.optional().nullable(),
+});
+
+export const staffUpdateSchema = z
+  .object({
+    full_name: z.string().trim().min(2, 'Staff name is required.').max(120).optional(),
+    phone: phoneSchema.optional().nullable(),
+    status: z.enum(['active', 'disabled']).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Send at least one field to update.',
+  });
+
+// Step 1 of activation: prove the code exists and is unclaimed.
+export const staffClaimSchema = z.object({ staff_code: staffCodeField });
+
+// Step 2 of activation: set the name and password. The code is re-sent (it is
+// carried in client state, not re-typed) and re-checked here, so an activate
+// call can never touch a code the claimant did not actually hold.
+export const staffActivateSchema = z.object({
+  staff_code: staffCodeField,
+  full_name: z.string().trim().min(2, 'Enter your name.').max(120).optional(),
+  password: passwordSchema,
 });
 
 export { nonNegativeKobo, moneySchema };

@@ -211,7 +211,7 @@ describe('phase 8 — transaction status history', () => {
     assert.equal(payment[1].note, 'Cash received at the counter');
   });
 
-  test('a note on its own is not a status change', async () => {
+  test('a note on its own is recorded but changes no status', async () => {
     const owner = await ownerWithProduct('NoteOnly Store');
     const txn = await newTransaction(owner, owner.product);
 
@@ -219,8 +219,19 @@ describe('phase 8 — transaction status history', () => {
       token: owner.token,
       body: { note: 'just thinking out loud' },
     });
-    assert.equal(res.status, 422, 'a note alone is a malformed request, not a change');
-    assert.equal(res.body.error.code, 'validation_failed');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    // No axis moved, so the diff is empty...
+    assert.deepEqual(res.body.changed, []);
+
+    const detail = await api('GET', `/transactions/${txn.id}`, { token: owner.token });
+    assert.equal(detail.body.transaction.orderStatus, 'pending');
+    assert.equal(detail.body.transaction.paymentStatus, 'unpaid');
+    // ...but the note still lands on the timeline as its own entry.
+    const notes = detail.body.history.filter((entry) => entry.statusType === 'note');
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].note, 'just thinking out loud');
+    assert.equal(notes[0].oldValue, null);
+    assert.equal(notes[0].newValue, null);
   });
 
   test('history is ordered oldest first', async () => {

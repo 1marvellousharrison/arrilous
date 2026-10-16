@@ -136,6 +136,33 @@ export async function recordStatusDiff({
   return written;
 }
 
+/**
+ * Appends a standalone note with no status axis attached.
+ *
+ * A staff may annotate a sale but not move its status, and every note belongs in
+ * the same append-only trail as the status moves, so this writes a 'note' entry
+ * whose old_value and new_value are both NULL. Nothing about the sale's columns
+ * changes; only the timeline grows.
+ */
+export async function recordNote({ transactionId, businessId, userId, note }) {
+  const text = typeof note === 'string' ? note.trim() : '';
+  if (!text) return false;
+
+  await run(
+    `INSERT INTO transaction_status_history
+       (id, transaction_id, business_id, changed_by_user_id, status_type,
+        old_value, new_value, note, created_at)
+     VALUES (?, ?, ?, ?, 'note', NULL, NULL, ?, ?)`,
+    crypto.randomUUID(),
+    transactionId,
+    businessId,
+    userId ?? null,
+    text,
+    new Date().toISOString()
+  );
+  return true;
+}
+
 export function publicHistoryEntry(row) {
   return {
     id: row.id,
