@@ -1,12 +1,27 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "echo Serving the committed Flutter web build from app/build/web",
-  "outputDirectory": "app/build/web",
-  "cleanUrls": true,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/:path*",
-      "destination": "https://arrilous.onrender.com/api/:path*"
+      "src": "app/build/web/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://arrilous.onrender.com/api/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/app/build/web/index.html"
+    },
+    {
+      "src": "/index.html",
+      "dest": "/app/build/web/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/app/build/web/$1"
     }
   ]
 }
