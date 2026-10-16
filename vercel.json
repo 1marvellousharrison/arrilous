@@ -1,27 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "builds": [
+  "outputDirectory": "app/build/web",
+  "rewrites": [
     {
-      "src": "app/build/web/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "https://arrilous.onrender.com/api/$1"
-    },
-    {
-      "src": "/",
-      "dest": "/app/build/web/index.html"
-    },
-    {
-      "src": "/index.html",
-      "dest": "/app/build/web/index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/app/build/web/$1"
+      "source": "/api/:path*",
+      "destination": "https://arrilous.onrender.com/api/:path*"
     }
   ]
 }
