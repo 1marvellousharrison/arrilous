@@ -1100,8 +1100,10 @@ void main() {
     testWidgets('a rider cancels and nothing changes, then confirms and the API hears it', (tester) async {
       useTallSurface(tester);
       var active = false;
+      late http.Request activationPatch;
       final session = await signInAs('rider', (request) async {
         if (request.method == 'PATCH' && request.url.path.endsWith('/logistics/rider/availability')) {
+          activationPatch = request;
           active = true;
           return json({
             'rider': {
@@ -1184,6 +1186,12 @@ void main() {
         tester.widget<Icon>(find.byIcon(Icons.bolt)).color,
         AppColors.success,
         reason: 'the app-bar dot turns green the moment the provider is live',
+      );
+      expect(activationPatch.body, contains('"is_available":true'));
+      expect(
+        activationPatch.body,
+        isNot(contains('availability_expires_at')),
+        reason: 'confirming without picking a time lets the server default stand',
       );
     });
 
@@ -1270,7 +1278,7 @@ void main() {
       );
     });
 
-    testWidgets("activation asks for the exact working time and time can be added or trimmed", (tester) async {
+    testWidgets('activation confirms first and the closing time is an optional extra', (tester) async {
       useTallSurface(tester);
       var active = false;
       DateTime? expiresAt;
@@ -1345,25 +1353,34 @@ void main() {
       await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Active')));
       await tester.pumpAndSettle();
 
-      // Presets cover the whole clock and every hour rolls to tomorrow once it
-      // is behind "now", so activation works at any time of day — including
-      // nights when nothing is left ahead today.
+      // Going active is a plain confirmation. The clock is optional and folded
+      // away, so activation stays a two-tap action; unfolding it reveals the
+      // whole clock, and every hour rolls forward rather than being refused.
       final now = DateTime.now();
-      final expectedActivationHour = (now.hour + 1) % 24;
-      final replanHour = (expectedActivationHour + 1) % 24;
+      final chosenHour = (now.hour + 1) % 24;
+      final replanHour = (chosenHour + 1) % 24;
 
-      // Going active asks for the exact time of day to work until.
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
       expect(find.text('Go active?'), findsOneWidget);
+      expect(find.text('Set a closing time'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, '12:00 PM'), findsNothing,
+          reason: 'the hour chips stay folded away until the option is turned on');
+
+      await tester.tap(find.text('Set a closing time'));
+      await tester.pumpAndSettle();
       expect(find.widgetWithText(ChoiceChip, '12:00 PM'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, '7:00 PM'), findsOneWidget);
+      expect(find.text('Pick a different time…'), findsOneWidget);
+      final chosenLabel = TimeOfDay(hour: chosenHour, minute: 0).format(tester.element(find.byType(AlertDialog)));
+      await tester.tap(find.widgetWithText(ChoiceChip, chosenLabel));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Yes, go active'));
       await tester.pumpAndSettle();
       final plannedTime = closesAtIn(lastPatch);
-      expect(plannedTime, isNotNull, reason: 'the chosen work-until time travels with activation');
-      expect(plannedTime!.hour, expectedActivationHour,
-          reason: 'the first still-future preset is what the API hears');
+      expect(plannedTime, isNotNull, reason: 'an optional closing time still travels with activation');
+      expect(plannedTime!.hour, chosenHour,
+          reason: 'the chosen hour is what the API hears');
 
       // The Active page shows the closing time and a re-plan edit that reaches the API.
       await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Active')));

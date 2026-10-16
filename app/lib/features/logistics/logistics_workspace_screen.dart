@@ -430,17 +430,15 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
 
   /// Spec 16 and 17 — going active (or inactive) is a decision, not a flick of
   /// the switch. The switch asks first; only an explicit "yes" reaches the API,
-  /// and cancelling leaves the profile exactly as it was. Going active also asks
-  /// the exact time of day the provider wants to work until.
+  /// and cancelling leaves the profile exactly as it was. Going active is a
+  /// plain confirmation with an optional closing time, so it stays a two-tap
+  /// action.
   Future<void> _confirmAvailability(LogisticsRepository repository, bool next) async {
     DateTime? closesAt;
     if (next) {
-      final chosen = await _askForCloseTime(
-        title: 'Go active?',
-        confirmLabel: 'Yes, go active',
-      );
-      if (chosen == null || !mounted) return;
-      closesAt = chosen;
+      final choice = await _confirmGoActive();
+      if (choice == null || !mounted) return;
+      closesAt = choice.closesAt;
     } else {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -1121,30 +1119,22 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
     }
   }
 
-  /// The work-until chooser used when going active and when re-planning
-  /// mid-shift. Presets cover the whole clock, and any choice that is already
-  /// behind "now" rolls to the same time tomorrow, so a provider can always go
-  /// active — late at night included — and the closing time the server receives
-  /// is always in the future.
+  /// The work-until chooser used when re-planning an active shift. Presets cover
+  /// the whole clock, and any choice that is already behind "now" rolls to the
+  /// same time tomorrow, so re-planning works at any hour — nights included.
   Future<DateTime?> _askForCloseTime({
     required String title,
     required String confirmLabel,
     DateTime? current,
   }) {
     final now = DateTime.now();
-    final presets = List<int>.generate(24, (hour) => hour);
-
-    late DateTime closing;
-    if (current != null && current.isAfter(now)) {
-      closing = current;
-    } else {
-      closing = nextWorkUntil(now, now.hour == 23 ? 0 : now.hour + 1);
-    }
+    var closing = current != null && current.isAfter(now)
+        ? current
+        : nextWorkUntil(now, now.hour == 23 ? 0 : now.hour + 1);
     return showDialog<DateTime>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setState) {
-          final past = !closing.isAfter(now);
           return AlertDialog(
             title: Text(title),
             content: SingleChildScrollView(
@@ -1153,50 +1143,17 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title == 'Go active?'
-                        ? 'You will be visible to businesses looking for delivery capacity until you stop, later today.'
-                        : 'Your closing time follows the exact hour you pick. Change it and the shift moves to that time.',
+                    'Your closing time follows the exact hour you pick. Change it and the shift moves to that time.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text('Work until', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: [
-                  for (final hour in presets)
-                    Builder(
-                      builder: (chipContext) {
-                        final candidate = nextWorkUntil(now, hour);
-                        return ChoiceChip(
-                          label: Text(TimeOfDay(hour: hour, minute: 0).format(chipContext)),
-                          selected: closing.isAtSameMomentAs(candidate),
-                          onSelected: (_) => setState(() => closing = candidate),
-                        );
-                      },
-                    ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: dialogContext,
-                        initialTime: TimeOfDay(hour: closing.hour, minute: closing.minute),
-                      );
-                      if (picked == null) return;
-                      // An hour already gone today reads as tomorrow, exactly as
-                      // the presets do, so the choice is never refused.
-                      setState(() => closing = nextWorkUntil(now, picked.hour, picked.minute));
-                    },
-                    icon: const Icon(Icons.schedule, size: 18),
-                    label: const Text('Pick a different time…'),
-                  ),
+                  _WorkUntilPicker(now: now, closing: closing, onChanged: (value) => setState(() => closing = value)),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    past ? 'Please pick a time still ahead today.' : _centerLabel(closing),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: past ? AppColors.danger : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
+                    _centerLabel(closing),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                   ),
                 ],
               ),
@@ -1204,8 +1161,61 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
             actions: [
               TextButton(onPressed: () => Navigator.of(dialogContext).pop(null), child: const Text('Cancel')),
               FilledButton(
-                onPressed: past ? null : () => Navigator.of(dialogContext).pop(closing),
+                onPressed: () => Navigator.of(dialogContext).pop(closing),
                 child: Text(confirmLabel),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Going active is a plain confirmation — the closing time is an optional
+  /// extra folded into the same popup rather than a forced first step. Returns
+  /// null when the provider backs out, otherwise the (possibly null) closing
+  /// time; a null closing time lets the server apply its default shift length.
+  Future<({DateTime? closesAt})?> _confirmGoActive() {
+    final now = DateTime.now();
+    var withSchedule = false;
+    var closing = nextWorkUntil(now, now.hour == 23 ? 0 : now.hour + 1);
+    return showDialog<({DateTime? closesAt})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: const Text('Go active?'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'You will be visible to businesses looking for delivery capacity until you stop.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  CheckboxListTile(
+                    value: withSchedule,
+                    onChanged: (value) => setState(() => withSchedule = value ?? false),
+                    title: const Text('Set a closing time'),
+                    subtitle: Text(withSchedule ? _centerLabel(closing) : 'Optional — the shift runs 8 hours by default.'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                  if (withSchedule) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    _WorkUntilPicker(now: now, closing: closing, onChanged: (value) => setState(() => closing = value)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(null), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop((closesAt: withSchedule ? closing : null)),
+                child: const Text('Yes, go active'),
               ),
             ],
           );
@@ -1657,6 +1667,57 @@ class _LogisticsSetupFormState extends State<_LogisticsSetupForm> {
           onPressed: widget.repository.loading ? null : _submit,
           icon: const Icon(Icons.add),
           label: Text(widget.isRider ? 'Create rider profile' : 'Create organization'),
+        ),
+      ],
+    );
+  }
+}
+
+/// The whole-clock hour chips plus a custom picker, shared by the go-active
+/// confirmation and the re-plan dialog. Every hour rolls forward to the next
+/// moment it comes round, so a choice is never refused.
+class _WorkUntilPicker extends StatelessWidget {
+  const _WorkUntilPicker({required this.now, required this.closing, required this.onChanged});
+
+  final DateTime now;
+  final DateTime closing;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (var hour = 0; hour < 24; hour++)
+              Builder(
+                builder: (chipContext) {
+                  final candidate = nextWorkUntil(now, hour);
+                  return ChoiceChip(
+                    label: Text(TimeOfDay(hour: hour, minute: 0).format(chipContext)),
+                    selected: closing.isAtSameMomentAs(candidate),
+                    onSelected: (_) => onChanged(candidate),
+                  );
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        TextButton.icon(
+          onPressed: () async {
+            final picked = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay(hour: closing.hour, minute: closing.minute),
+            );
+            if (picked == null) return;
+            onChanged(nextWorkUntil(now, picked.hour, picked.minute));
+          },
+          icon: const Icon(Icons.schedule, size: 18),
+          label: const Text('Pick a different time…'),
         ),
       ],
     );
