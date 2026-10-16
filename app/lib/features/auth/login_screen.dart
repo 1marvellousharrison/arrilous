@@ -326,7 +326,7 @@ class _BrandMark extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'biziness',
+              'Biziness — Your Business, Simplified',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800,
               ),

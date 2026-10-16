@@ -50782,11 +50782,11 @@ g.push(A.cM(!0,!1,k.f,A.cF(j,j,j,j,j,j,j,j,!0,j,j,j,j,j,n,j,j,j,j,j,j,j,j,j,j,j,
 g.push(B.D)
 o=k.w
 p=A.aH(A.ap(A.b([A.cp(new A.Bo(o,k.x?j:new A.aBk(k),j),24,24),B.at,A.l("Remember me",j,j,j,s,j,j,j)],q),B.l,B.e,B.f,0,j),1)
-g.push(A.ap(A.b([p,A.el(B.a6Q,j,j,k.x?j:new A.aBl(k),j,j)],q),B.l,B.e,B.f,0,j))
+g.push(A.ap(A.b([p,A.el(B.a6P,j,j,k.x?j:new A.aBl(k),j,j)],q),B.l,B.e,B.f,0,j))
 g.push(B.H)
 p=k.x
 o=p?j:k.gaqs()
-g.push(A.dI(p?B.dg:B.a6G,o))
+g.push(A.dI(p?B.dg:B.a6F,o))
 g.push(B.H)
 o=i.ch
 n=A.aH(A.w7(o,j),1)
@@ -50871,7 +50871,7 @@ return s},
 $S:0}
 A.Wx.prototype={
 D(a){var s,r=null,q=A.k(a),p=A.OQ(A.bX(16),A.aUh("assets/images/logo.png",B.ix,48,48),B.bn),o=q.ok,n=o.r
-n=A.l("biziness",r,r,r,n==null?r:n.bI(B.R),r,r,r)
+n=A.l("Biziness \u2014 Your Business, Simplified",r,r,r,n==null?r:n.bI(B.R),r,r,r)
 o=o.Q
 s=t.p
 return A.ap(A.b([p,B.aB,A.as(A.b([n,A.l("Sales, payments & deliveries",r,r,r,o==null?r:o.ak(q.ax.k3.av(0.55)),r,r,r)],s),B.q,B.e,B.f,0,B.n)],s),B.l,B.e,B.f,0,r)}}
@@ -51208,7 +51208,7 @@ n=q.y
 k=n?p:q.gavQ()
 j.push(A.dI(n?B.dg:B.ER,k))
 j.push(B.N)
-j.push(A.el(B.a6E,p,p,q.y?p:q.a.e,p,p))
+j.push(A.el(B.a6D,p,p,q.y?p:q.a.e,p,p))
 return A.eC(l,A.eB(!0,A.mu(p,A.ds(j,B.m_,p,B.L,!1),q.d),!1,B.W,!0),p,p)},
 avP(a){var s
 A:{if("logistics_partner"===a){s="a Logistics Partner"
@@ -51818,7 +51818,7 @@ $0(){return this.a.CW=!1},
 $S:0}
 A.au0.prototype={
 $1(a){var s=null
-return A.NR(A.b([A.el(B.a6R,s,s,new A.atZ(a),s,s),A.dI(B.a7i,new A.au_(a))],t.p),B.a6U,B.a6P)},
+return A.NR(A.b([A.el(B.a6Q,s,s,new A.atZ(a),s,s),A.dI(B.a7i,new A.au_(a))],t.p),B.a6T,B.a6O)},
 $S:99}
 A.atZ.prototype={
 $0(){return A.bf(this.a,!1).dY(!1)},
@@ -52297,7 +52297,7 @@ return new A.bA(A.as(A.b([A.l("No sales recorded yet.",l,l,l,A.cz(l,l,A.k(s).ax.
 q=A.b([],s)
 for(p=A.ho(r,0,A.lT(7,"count",t.S),A.Z(r).c),o=p.$ti,p=new A.bo(p,p.gJ(0),o.i("bo<aB.E>")),o=o.i("aB.E");p.A();){n=p.d
 if(n==null)n=o.a(n)
-q.push(new A.al(B.d6,new A.bA(A.ap(A.b([new A.dH(1,B.b0,A.as(A.b([A.l(n.b,l,l,l,B.bG,l,l,l),B.an,new A.Gc(n,!0,l)],s),B.q,B.e,B.f,0,B.n),l),A.l(A.c7(n.x),l,l,l,B.ck,l,l,l)],s),B.l,B.e,B.f,0,l),B.bM,new A.awN(m,n),l),l))}q.push(A.hk(B.a6W,m.a.y))
+q.push(new A.al(B.d6,new A.bA(A.ap(A.b([new A.dH(1,B.b0,A.as(A.b([A.l(n.b,l,l,l,B.bG,l,l,l),B.an,new A.Gc(n,!0,l)],s),B.q,B.e,B.f,0,B.n),l),A.l(A.c7(n.x),l,l,l,B.ck,l,l,l)],s),B.l,B.e,B.f,0,l),B.bM,new A.awN(m,n),l),l))}q.push(A.hk(B.a6V,m.a.y))
 return A.as(q,B.l,B.e,B.f,0,B.n)}}
 A.awU.prototype={
 $2(a6,a7){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b=null,a="Coming soon",a0="Your business",a1=this.a,a2=a1.a.c,a3=a2.c,a4=a3==null,a5=a4?b:a3.Q
@@ -52546,7 +52546,7 @@ if(s.c!=null)s.tc()},
 $S:25}
 A.aA8.prototype={
 $1(a){var s=null
-return A.NR(A.b([A.el(B.a6N,s,s,new A.aA6(a),s,s),A.dI(B.a7b,new A.aA7(a))],t.p),B.a6e,B.a69)},
+return A.NR(A.b([A.el(B.a6M,s,s,new A.aA6(a),s,s),A.dI(B.a7b,new A.aA7(a))],t.p),B.a6e,B.a69)},
 $S:99}
 A.aA6.prototype={
 $0(){return A.bf(this.a,!1).dY(!1)},
@@ -52566,7 +52566,7 @@ if(o.gGa())return A.aT1(o,o.gfu())
 p=o.c
 s=p==null?r:A.vd(p.c)
 if(s==null)s=""
-p=A.l(s.length===0?"biziness":s,r,r,r,r,r,r,r)
+p=A.l(s.length===0?"Biziness":s,r,r,r,r,r,r,r)
 return A.eC(A.eN(A.b([A.cN(r,r,B.O1,r,r,q.gasd(),r,r,"Business details",r),A.cN(r,r,B.n0,r,r,q.a.z,r,r,"Settings",r)],t.p),!0,r,p),q.aws(),A.aV7(B.SR,q.garO(),q.d),r)},
 $S:39}
 A.aA0.prototype={
@@ -52580,7 +52580,7 @@ $1(a){return new A.pU(this.a.a.y,null)},
 $S:146}
 A.aA_.prototype={
 $1(a){var s=null,r=A.k(a).ok.w
-return A.eB(!0,A.as(A.b([new A.al(B.rc,A.l("New transaction",s,s,s,r==null?s:r.bI(B.R),s,s,s),s),A.eS(!1,s,s,s,!0,s,s,s,!0,s,B.NH,s,s,s,s,new A.azZ(a),!1,s,s,s,s,B.a6Z,s,B.a6m,B.mZ,s),A.eS(!1,s,s,s,!1,s,s,s,!0,s,A.cb(B.mK,A.k(a).ax.k3.av(0.4),s,s),s,s,s,s,s,!1,s,s,s,s,B.EK,s,B.a6S,B.f9,s),A.eS(!1,s,s,s,!1,s,s,s,!0,s,A.cb(B.t5,A.k(a).ax.k3.av(0.4),s,s),s,s,s,s,s,!1,s,s,s,s,B.EK,s,B.a6K,B.f9,s),B.N],t.p),B.bK,B.e,B.aw,0,B.n),!1,B.W,!0)},
+return A.eB(!0,A.as(A.b([new A.al(B.rc,A.l("New transaction",s,s,s,r==null?s:r.bI(B.R),s,s,s),s),A.eS(!1,s,s,s,!0,s,s,s,!0,s,B.NH,s,s,s,s,new A.azZ(a),!1,s,s,s,s,B.a6Y,s,B.a6m,B.mZ,s),A.eS(!1,s,s,s,!1,s,s,s,!0,s,A.cb(B.mK,A.k(a).ax.k3.av(0.4),s,s),s,s,s,s,s,!1,s,s,s,s,B.EK,s,B.a6R,B.f9,s),A.eS(!1,s,s,s,!1,s,s,s,!0,s,A.cb(B.t5,A.k(a).ax.k3.av(0.4),s,s),s,s,s,s,s,!1,s,s,s,s,B.EK,s,B.a6J,B.f9,s),B.N],t.p),B.bK,B.e,B.aw,0,B.n),!1,B.W,!0)},
 $S:89}
 A.azZ.prototype={
 $0(){A.bf(this.a,!1).dY("manual")
@@ -52669,8 +52669,8 @@ i=s.KZ(B.t6,"Location",k==null?e:k.gQo(),!0)
 r=A.as(A.b([l,new A.al(B.E,A.as(A.b([j,i,s.KZ(B.MW,"Email",q?e:r.r,!1)],f),B.q,B.e,B.f,0,B.n),e)],f),B.q,B.e,B.f,0,B.n)
 l=s.a
 j=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.Oe,e,e,e,e,l.d,!1,e,e,e,e,B.a62,e,B.EP,e,e)
-i=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.Oq,e,e,e,e,l.e,!1,e,e,e,e,B.a78,e,B.EL,e,e)
-h=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.ti,e,e,e,e,l.f,!1,e,e,e,e,B.a7_,e,B.EI,e,e)
+i=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.Oq,e,e,e,e,l.e,!1,e,e,e,e,B.a77,e,B.EL,e,e)
+h=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.ti,e,e,e,e,l.f,!1,e,e,e,e,B.a6Z,e,B.EI,e,e)
 q=this.b
 g=q.ch
 g=A.eS(!1,e,e,e,!0,e,e,e,!0,e,B.Oz,e,e,e,e,s.gasl(),!1,e,e,e,e,A.l(g>0?""+g+" unread":"Delivery request activity",e,e,e,e,e,e,e),e,B.EN,e,e)
@@ -52679,7 +52679,7 @@ return A.ds(A.b([d,B.H,new A.bA(r,B.W,e,e),B.H,j,i,h,g,A.eS(!1,e,e,e,!0,e,e,e,!0
 $S:377}
 A.a1R.prototype={
 D(a){var s=null,r=this.e,q=A.O7(r),p=t.p
-return A.eC(A.eN(A.b([A.cN(s,s,B.O5,s,s,r,s,s,"Sign out",s)],p),!0,q,B.a6C),A.ds(A.b([B.i8,new A.dq(B.Nh,"Cannot reach your business yet",this.c,A.dI(B.a6k,this.d),s)],p),B.E,s,B.L,!1),s,s)}}
+return A.eC(A.eN(A.b([A.cN(s,s,B.O5,s,s,r,s,s,"Sign out",s)],p),!0,q,B.a78),A.ds(A.b([B.i8,new A.dq(B.Nh,"Cannot reach your business yet",this.c,A.dI(B.a6k,this.d),s)],p),B.E,s,B.L,!1),s,s)}}
 A.Bd.prototype={
 a2(){return new A.HF()}}
 A.HF.prototype={
@@ -52876,7 +52876,7 @@ if((r==null?"":r).length!==0)s.push(A.l("Package: "+A.n(a.h(0,l)),m,m,m,m,m,m,m)
 r=A.V(a.h(0,k))
 if((r==null?"":r).length!==0)s.push(A.l("Preferred mode: "+A.n(a.h(0,k)),m,m,m,m,m,m,m))
 if(q!=null){r=B.d.bi(A.bn(q))
-s.push(A.l("Fee: "+A.c7(r),m,m,m,B.bG,m,m,m))}else s.push(B.a6H)
+s.push(A.l("Fee: "+A.c7(r),m,m,m,B.bG,m,m,m))}else s.push(B.a6G)
 r=A.V(a.h(0,j))
 if((r==null?"":r).length!==0)s.push(A.l("Rider: "+A.n(a.h(0,j)),m,m,m,m,m,m,m))
 if(a.h(0,i)!=null)B.b.L(s,A.b([B.an,A.l(A.n(a.h(0,i)),m,m,m,B.ov,m,m,m)],p))
@@ -53491,7 +53491,7 @@ q=f.ajU(m)
 p=f.a_6("Riders")
 j=f.auD(k)
 i=a.as
-h=A.pJ(B.ta,B.a71,i?e:new A.aCL(f,a))
+h=A.pJ(B.ta,B.a70,i?e:new A.aCL(f,a))
 g=t.p
 return f.x4(a,A.b([r,B.an,q,B.O,p,B.D,j,B.O,f.tn("Service areas & pricing",A.pY(A.b([h,A.pJ(B.jt,B.a79,i?e:new A.aCM(f,a))],g),0,4)),B.an,f.ai0(n,l)],g))},
 apw(a){var s,r,q,p,o,n,m,l,k=this,j=null,i=k.c
@@ -53836,7 +53836,7 @@ h.toString
 h=A.k(h).ok.Q
 j=A.l("Remove time",d,d,d,h==null?d:h.bI(B.R),d,d,d)
 h=a1.as
-g=A.hk(B.a6V,h?d:new A.aCd(e,a1))
+g=A.hk(B.a6U,h?d:new A.aCd(e,a1))
 f=A.hk(B.a6v,h?d:new A.aCe(e,a1))
 B.b.L(b,A.b([B.hh,a,B.D,i,B.N,j,B.D,A.pY(A.b([g,f,A.hk(B.a7j,h?d:new A.aCf(e,a1))],k),8,8),B.an,A.l("Removing more than the time you have left ends today's shift.",d,d,d,p,d,d,d)],k))}return new A.bA(A.as(b,B.q,B.e,B.f,0,B.n),B.E,d,d)},
 nz(a,b){return this.afH(a,b)},
@@ -53946,7 +53946,7 @@ o.push(new A.hQ(A.e1(g,"_"," "),p,k,k))
 if(r){q=a.as
 p=A.aH(A.dI(B.a6c,q?k:new A.aCC(a,b)),1)
 B.b.L(o,A.b([B.N,A.ap(A.b([p,B.aB,A.aH(A.hk(B.a7l,q?k:new A.aCD(a,b)),1)],n),B.l,B.e,B.f,0,k)],n))}else if(q!=null){p=a.as?k:new A.aCE(a,b,q)
-B.b.L(o,A.b([B.N,A.dI(A.l(this.arf(q),k,k,k,k,k,k,k),p)],n))}if(c&&s)B.b.L(o,A.b([B.D,A.x8(B.Ox,B.a6D,a.as?k:new A.aCF(this,a,b),k)],n))
+B.b.L(o,A.b([B.N,A.dI(A.l(this.arf(q),k,k,k,k,k,k,k),p)],n))}if(c&&s)B.b.L(o,A.b([B.D,A.x8(B.Ox,B.a6C,a.as?k:new A.aCF(this,a,b),k)],n))
 return new A.al(B.Lw,new A.bA(A.as(o,B.q,B.e,B.f,0,B.n),B.E,new A.aCG(this,b),k),k)},
 Lh(a,b){return this.Ye(a,b,!1)},
 arf(a){var s
@@ -54100,7 +54100,7 @@ $1(a){return this.a.rU(this.b,a)},
 $S:8}
 A.aC7.prototype={
 $1(a){var s=null
-return A.NR(A.b([A.el(B.oy,s,s,new A.aC5(a),s,s),A.dI(B.a6M,new A.aC6(a))],t.p),B.a7a,B.a6d)},
+return A.NR(A.b([A.el(B.oy,s,s,new A.aC5(a),s,s),A.dI(B.a6L,new A.aC6(a))],t.p),B.a7a,B.a6d)},
 $S:99}
 A.aC5.prototype={
 $0(){return A.bf(this.a,!1).dY(!1)},
@@ -54437,7 +54437,7 @@ q=t.p
 p=A.b([],q)
 for(o=l.e,n=0;n<24;++n)p.push(new A.dh(new A.aBX(i,o[n],j,b),k))
 p=A.pY(p,8,8)
-i=A.pJ(B.NQ,B.a6J,new A.aBY(a,j,b,i))
+i=A.pJ(B.NQ,B.a6I,new A.aBY(a,j,b,i))
 o=h?"Please pick a time still ahead today.":"Closes "+s.V3(j.aW(),!0)+"."
 m=s.c
 m.toString
@@ -55058,8 +55058,8 @@ p=n.ok.Q
 p=p==null?o:p.fb(r,B.bT)
 return A.l(s.a,o,o,o,p,o,o,o)}}
 A.u3.prototype={
-D(a){var s,r,q,p,o=this,n=null,m=o.e,l=A.eN(n,!0,n,B.a6o),k=t.p,j=A.as(A.b([new A.dh(new A.aoM(o),n),A.w7(A.k(a).ch,1),A.eS(!1,B.rd,n,n,!0,n,n,n,!0,n,B.OD,n,n,n,n,n,!1,n,n,n,n,B.a77,n,B.a6a,A.aWi(n,n,n,n,n,!1,B.X,n,n,n,n,n,n,new A.aoN(o,a),n,n,n,n,n,n,n,n,o.c.b===B.id),n)],k),B.l,B.e,B.f,0,B.n),i=A.eS(!1,n,n,n,!0,n,n,n,!0,!0,B.n_,n,n,n,n,n,!1,n,n,n,n,A.l(m.b+"\n"+m.c,n,n,n,n,n,n,n),n,B.a7g,n,n),h=A.w7(A.k(a).ch,1)
-i=A.as(A.b([i,h,A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.Ov,n,n,n,n,n,!1,n,n,n,n,n,n,B.a74,new A.hQ(o.auC(m.e),B.bz,n,n),n),A.w7(A.k(a).ch,1),A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.f9,n,n,n,n,new A.aoO(o,a),!1,n,n,n,n,n,n,B.a6L,B.mZ,n),A.w7(A.k(a).ch,1),A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.O_,n,n,n,n,new A.aoP(o,a),!1,n,n,n,n,n,n,B.a68,n,n)],k),B.l,B.e,B.f,0,B.n)
+D(a){var s,r,q,p,o=this,n=null,m=o.e,l=A.eN(n,!0,n,B.a6o),k=t.p,j=A.as(A.b([new A.dh(new A.aoM(o),n),A.w7(A.k(a).ch,1),A.eS(!1,B.rd,n,n,!0,n,n,n,!0,n,B.OD,n,n,n,n,n,!1,n,n,n,n,B.a76,n,B.a6a,A.aWi(n,n,n,n,n,!1,B.X,n,n,n,n,n,n,new A.aoN(o,a),n,n,n,n,n,n,n,n,o.c.b===B.id),n)],k),B.l,B.e,B.f,0,B.n),i=A.eS(!1,n,n,n,!0,n,n,n,!0,!0,B.n_,n,n,n,n,n,!1,n,n,n,n,A.l(m.b+"\n"+m.c,n,n,n,n,n,n,n),n,B.a7g,n,n),h=A.w7(A.k(a).ch,1)
+i=A.as(A.b([i,h,A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.Ov,n,n,n,n,n,!1,n,n,n,n,n,n,B.a73,new A.hQ(o.auC(m.e),B.bz,n,n),n),A.w7(A.k(a).ch,1),A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.f9,n,n,n,n,new A.aoO(o,a),!1,n,n,n,n,n,n,B.a6K,B.mZ,n),A.w7(A.k(a).ch,1),A.eS(!1,n,n,n,!0,n,n,n,!0,n,B.O_,n,n,n,n,new A.aoP(o,a),!1,n,n,n,n,n,n,B.a68,n,n)],k),B.l,B.e,B.f,0,B.n)
 h=A.b([],k)
 for(s=0;s<5;++s){r=B.T4[s]
 q=r.b
@@ -55077,7 +55077,7 @@ $1(a){var s,r=null,q=A.k(a).ax.a===B.aM,p=this.a.c,o=q?B.Ni:B.Nn
 o=A.cb(o,A.k(a).ax.b,r,r)
 if(p.b===B.id)s="Following your phone\u2019s appearance"
 else s=q?"Using the dark charcoal theme":"Using the light theme"
-return new A.ub(q,p.ga97(),B.a70,A.l(s,r,r,r,A.cz(r,r,A.k(a).ax.k3.av(0.6),r,r,r,r,r,r,r,r,12,r,r,r,r,r,!0,r,r,r,r,r,r,r,r),r,r,r),o,B.W,B.ab_,r,r)},
+return new A.ub(q,p.ga97(),B.a7_,A.l(s,r,r,r,A.cz(r,r,A.k(a).ax.k3.av(0.6),r,r,r,r,r,r,r,r,12,r,r,r,r,r,!0,r,r,r,r,r,r,r,r),r,r,r),o,B.W,B.ab_,r,r)},
 $S:290}
 A.aoN.prototype={
 $1(a){var s=this.a.c
@@ -55183,7 +55183,7 @@ h.push(new A.bA(A.as(s,B.l,B.e,B.f,0,B.n),B.E,m,m))
 h.push(B.O)
 h.push(n.xb("Delivery"))
 h.push(B.D)
-g=A.b([A.aWj(B.W,new A.aDW(n),B.a66,B.a6I,n.r)],i)
+g=A.b([A.aWj(B.W,new A.aDW(n),B.a66,B.a6H,n.r)],i)
 if(n.r)B.b.L(g,A.b([B.D,A.cM(!0,!1,n.gBQ(),A.cF(m,m,m,m,m,m,m,m,!0,m,m,m,m,m,r.h(0,"delivery_address"),m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,"10 Adeola Odeku St, Victoria Island",m,m,m,m,m,m,m,m,"Delivery address",!0,!0,!1,m,m,m,m,m,m,m,m,m,m,m,m,m,m),m,!1,m,m,m,m,2,!1,new A.aDX(n),m,m,m,m,m,B.F,B.c9,m,m)],i))
 h.push(new A.bA(A.as(g,B.l,B.e,B.f,0,B.n),B.E,m,m))
 h.push(B.O)
@@ -55429,7 +55429,7 @@ k=A.fT(l,B.ae,!1,l,!0,B.p,l,A.hd(),k,l,l,l,l,l,2,A.cF(l,l,l,l,l,l,l,l,!0,l,l,l,l
 o=A.l("Line total: "+A.c7(j*m.r),l,l,l,B.bG,l,l,l)
 p=m.r
 n=t.p
-p=A.ap(A.b([B.a76,B.ok,A.cN(l,l,B.NK,l,l,p>1?new A.ask(m):l,l,l,l,l),A.l(""+p,l,l,l,B.bG,l,l,l),A.cN(l,l,B.mV,l,l,new A.asl(m),l,l,l,l)],n),B.l,B.e,B.f,0,l)
+p=A.ap(A.b([B.a75,B.ok,A.cN(l,l,B.NK,l,l,p>1?new A.ask(m):l,l,l,l,l),A.l(""+p,l,l,l,B.bG,l,l,l),A.cN(l,l,B.mV,l,l,new A.asl(m),l,l,l,l)],n),B.l,B.e,B.f,0,l)
 return A.aH(A.xT(A.as(A.b([q,B.H,s,B.H,k,B.H,o,B.D,p,B.O,A.dI(B.a6b,r?new A.asm(m,j):l)],n),B.q,B.e,B.f,0,B.n),B.E,l,l,B.L),1)}}
 A.ass.prototype={
 $2(a,b){var s=this.a
@@ -55782,7 +55782,7 @@ $2(a,b){return B.at},
 $S:80}
 A.aKA.prototype={
 $2(a,b){var s=null,r=this.a
-if(b===r.length)return A.el(B.a6F,s,s,this.b.gaA_(),s,s)
+if(b===r.length)return A.el(B.a6E,s,s,this.b.gaA_(),s,s)
 return r[b]},
 $S:95}
 A.aKD.prototype={
@@ -56287,7 +56287,7 @@ $0(){return this.a.at=!1},
 $S:0}
 A.atj.prototype={
 $2(a,b){var s=this.a,r=s.gMv(),q=r.b,p=A.bcv(),o=A.bcu()
-return new A.t6(s.at?B.aaY:new A.a1m(s.gmh(),r,s.gJ3(),s.gJd(),s.gJI(),s.gMD(),s.gJJ(),s.gLg(),s.gN9(),s.gahp(),null),"biziness",p,o,q,!1,null)},
+return new A.t6(s.at?B.aaY:new A.a1m(s.gmh(),r,s.gJ3(),s.gJd(),s.gJI(),s.gMD(),s.gJJ(),s.gLg(),s.gN9(),s.gahp(),null),"Biziness \u2014 Your Business, Simplified",p,o,q,!1,null)},
 $S:354}
 A.a2b.prototype={
 D(a){return B.Z9}}
@@ -56529,7 +56529,7 @@ r=s}else r=B.n4
 s=A.cF(k,k,k,k,k,k,k,k,!0,k,k,k,k,k,l.f,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,k,"State",!0,!0,!1,k,k,k,k,k,k,k,k,k,k,k,k,k,k)
 q=A.b([],t.FG)
 for(p=r.length,o=t.b7,n=0;n<r.length;r.length===p||(0,A.F)(r),++n){m=r[n]
-q.push(new A.eu(m,A.l(m,k,k,k,k,k,k,k),B.bS,k,o))}return A.mi(s,B.a6Y,j,!0,q,k,l.d,new A.aj5(l),t.N)}}
+q.push(new A.eu(m,A.l(m,k,k,k,k,k,k,k),B.bS,k,o))}return A.mi(s,B.a6X,j,!0,q,k,l.d,new A.aj5(l),t.N)}}
 A.aj5.prototype={
 $1(a){var s=a==null||B.c.aq(a).length===0
 return s?"Select a state.":null},
@@ -115832,8 +115832,8 @@ B.PP=new A.t_(1,"titleHeight")
 B.tC=new A.t_(2,"top")
 B.tD=new A.t_(3,"center")
 B.PQ=new A.t_(4,"bottom")
-B.a72=new A.ar("Choose a transaction",null,null,null,null,null,null,null,null,null)
-B.PR=new A.oQ(null,B.a72,null,null,null,null,null,null,null,null,!0,null,null,!1,null,null,!1,null,null,null,null,null,null,null,!0,null,null)
+B.a71=new A.ar("Choose a transaction",null,null,null,null,null,null,null,null,null)
+B.PR=new A.oQ(null,B.a71,null,null,null,null,null,null,null,null,!0,null,null,!1,null,null,!1,null,null,null,null,null,null,null,!0,null,null)
 B.a7p=new A.ar("Choose a rider",null,null,null,null,null,null,null,null,null)
 B.PS=new A.oQ(null,B.a7p,null,null,null,null,null,null,null,null,!0,null,null,!1,null,null,!1,null,null,null,null,null,null,null,!0,null,null)
 B.S7=s([1373.2198709594231,-1100.4251190754821,-7.278681089101213],t.n)
@@ -117741,18 +117741,18 @@ B.a0z=new A.ki(5,"timeout")
 B.a0A=new A.xY(null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 B.a7q=new A.ar("Password updated. Sign in with your new password.",null,null,null,null,null,null,null,null,null)
 B.a0B=new A.ff(B.a7q,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
-B.a73=new A.ar("Payout successful",null,null,null,null,null,null,null,null,null)
-B.a0C=new A.ff(B.a73,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
+B.a72=new A.ar("Payout successful",null,null,null,null,null,null,null,null,null)
+B.a0C=new A.ff(B.a72,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a7h=new A.ar("Rider assigned.",null,null,null,null,null,null,null,null,null)
 B.a0D=new A.ff(B.a7h,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a7k=new A.ar("Virtual account generated.",null,null,null,null,null,null,null,null,null)
 B.a0E=new A.ff(B.a7k,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a6B=new A.ar("Added successfully",null,null,null,null,null,null,null,null,null)
 B.a0F=new A.ff(B.a6B,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
-B.a6T=new A.ar("Create a delivery-required transaction before requesting a provider.",null,null,null,null,null,null,null,null,null)
-B.a0G=new A.ff(B.a6T,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
-B.a75=new A.ar("No available rider to assign.",null,null,null,null,null,null,null,null,null)
-B.a0H=new A.ff(B.a75,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
+B.a6S=new A.ar("Create a delivery-required transaction before requesting a provider.",null,null,null,null,null,null,null,null,null)
+B.a0G=new A.ff(B.a6S,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
+B.a74=new A.ar("No available rider to assign.",null,null,null,null,null,null,null,null,null)
+B.a0H=new A.ff(B.a74,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a7m=new A.ar("Enter the code to confirm",null,null,null,null,null,null,null,null,null)
 B.a0I=new A.ff(B.a7m,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a6t=new A.ar("This method is coming soon. Use Manual Entry for now.",null,null,null,null,null,null,null,null,null)
@@ -117761,10 +117761,10 @@ B.a7c=new A.ar("Code copied",null,null,null,null,null,null,null,null,null)
 B.a0K=new A.ff(B.a7c,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.a6h=new A.ar("Delivery request sent.",null,null,null,null,null,null,null,null,null)
 B.a0L=new A.ff(B.a6h,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
-B.a6O=new A.ar("Enter your email or phone number first.",null,null,null,null,null,null,null,null,null)
-B.a0M=new A.ff(B.a6O,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
-B.a6X=new A.ar("Copied",null,null,null,null,null,null,null,null,null)
-B.a0N=new A.ff(B.a6X,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
+B.a6N=new A.ar("Enter your email or phone number first.",null,null,null,null,null,null,null,null,null)
+B.a0M=new A.ff(B.a6N,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
+B.a6W=new A.ar("Copied",null,null,null,null,null,null,null,null,null)
+B.a0N=new A.ff(B.a6W,null,null,null,null,null,null,null,null,null,null,null,null,B.a_,!1,null,null,null,B.p,null)
 B.Ej=new A.G6(0,"permissive")
 B.a0O=new A.G6(1,"normal")
 B.a0P=new A.G6(2,"forced")
@@ -118197,39 +118197,39 @@ B.a6x=new A.ar("New",null,null,null,null,null,null,null,null,null)
 B.a6y=new A.ar("Add area",null,null,null,null,null,null,null,null,null)
 B.a6z=new A.ar("Reset password",null,null,null,null,null,null,null,null,null)
 B.a6A=new A.ar("Record your first sale",null,null,null,null,null,null,null,null,null)
-B.a6C=new A.ar("biziness",null,null,null,null,null,null,null,null,null)
-B.a6D=new A.ar("Assign rider & vehicle",null,null,null,null,null,null,null,null,null)
-B.a6E=new A.ar("Use a different account type",null,null,null,null,null,null,null,null,null)
-B.a6F=new A.ar("Clear all",null,null,null,null,null,null,null,null,null)
-B.a6G=new A.ar("Log in",null,null,null,null,null,null,null,null,null)
+B.a6C=new A.ar("Assign rider & vehicle",null,null,null,null,null,null,null,null,null)
+B.a6D=new A.ar("Use a different account type",null,null,null,null,null,null,null,null,null)
+B.a6E=new A.ar("Clear all",null,null,null,null,null,null,null,null,null)
+B.a6F=new A.ar("Log in",null,null,null,null,null,null,null,null,null)
 B.a2h=new A.x(!0,B.au,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.a6H=new A.ar("Fee: quote request pending",null,B.a2h,null,null,null,null,null,null,null)
-B.a6I=new A.ar("Needs delivery",null,null,null,null,null,null,null,null,null)
-B.a6J=new A.ar("Pick a different time\u2026",null,null,null,null,null,null,null,null,null)
-B.a6K=new A.ar("Screenshot / Photo",null,null,null,null,null,null,null,null,null)
-B.a6L=new A.ar("Change password",null,null,null,null,null,null,null,null,null)
-B.a6M=new A.ar("Yes, go inactive",null,null,null,null,null,null,null,null,null)
-B.a6N=new A.ar("Later",null,null,null,null,null,null,null,null,null)
-B.a6P=new A.ar("Are your details correct?",null,null,null,null,null,null,null,null,null)
-B.a6Q=new A.ar("Forgot password?",null,null,null,null,null,null,null,null,null)
-B.a6R=new A.ar("No, let me review",null,null,null,null,null,null,null,null,null)
-B.a6S=new A.ar("WhatsApp AI",null,null,null,null,null,null,null,null,null)
-B.a6U=new A.ar("Check your business name, contact, what you sell and your shop location. They are saved and you go back once you confirm.",null,null,null,null,null,null,null,null,null)
-B.a6V=new A.ar("-30 min",null,null,null,null,null,null,null,null,null)
-B.a6W=new A.ar("See all transactions",null,null,null,null,null,null,null,null,null)
+B.a6G=new A.ar("Fee: quote request pending",null,B.a2h,null,null,null,null,null,null,null)
+B.a6H=new A.ar("Needs delivery",null,null,null,null,null,null,null,null,null)
+B.a6I=new A.ar("Pick a different time\u2026",null,null,null,null,null,null,null,null,null)
+B.a6J=new A.ar("Screenshot / Photo",null,null,null,null,null,null,null,null,null)
+B.a6K=new A.ar("Change password",null,null,null,null,null,null,null,null,null)
+B.a6L=new A.ar("Yes, go inactive",null,null,null,null,null,null,null,null,null)
+B.a6M=new A.ar("Later",null,null,null,null,null,null,null,null,null)
+B.a6O=new A.ar("Are your details correct?",null,null,null,null,null,null,null,null,null)
+B.a6P=new A.ar("Forgot password?",null,null,null,null,null,null,null,null,null)
+B.a6Q=new A.ar("No, let me review",null,null,null,null,null,null,null,null,null)
+B.a6R=new A.ar("WhatsApp AI",null,null,null,null,null,null,null,null,null)
+B.a6T=new A.ar("Check your business name, contact, what you sell and your shop location. They are saved and you go back once you confirm.",null,null,null,null,null,null,null,null,null)
+B.a6U=new A.ar("-30 min",null,null,null,null,null,null,null,null,null)
+B.a6V=new A.ar("See all transactions",null,null,null,null,null,null,null,null,null)
 B.EN=new A.ar("Notifications",null,null,null,null,null,null,null,null,null)
-B.a6Y=new A.ar("Select a state",null,null,null,null,null,null,null,null,null)
-B.a6Z=new A.ar("Available",null,null,null,null,null,null,null,null,null)
+B.a6X=new A.ar("Select a state",null,null,null,null,null,null,null,null,null)
+B.a6Y=new A.ar("Available",null,null,null,null,null,null,null,null,null)
 B.EO=new A.ar("New transaction",null,null,null,null,null,null,null,null,null)
-B.a7_=new A.ar("Balance, funding and payouts",null,null,null,null,null,null,null,null,null)
-B.a70=new A.ar("Dark mode",null,B.ow,null,null,null,null,null,null,null)
-B.a71=new A.ar("Area",null,null,null,null,null,null,null,null,null)
-B.a74=new A.ar("Account type",null,null,null,null,null,null,null,null,null)
+B.a6Z=new A.ar("Balance, funding and payouts",null,null,null,null,null,null,null,null,null)
+B.a7_=new A.ar("Dark mode",null,B.ow,null,null,null,null,null,null,null)
+B.a70=new A.ar("Area",null,null,null,null,null,null,null,null,null)
+B.a73=new A.ar("Account type",null,null,null,null,null,null,null,null,null)
 B.EP=new A.ar("Products",null,null,null,null,null,null,null,null,null)
-B.a76=new A.ar("Quantity",null,null,null,null,null,null,null,null,null)
+B.a75=new A.ar("Quantity",null,null,null,null,null,null,null,null,null)
 B.a5B=new A.x(!0,null,null,null,null,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.a77=new A.ar("Match your phone\u2019s light/dark appearance",null,B.a5B,null,null,null,null,null,null,null)
-B.a78=new A.ar("Customer records and history",null,null,null,null,null,null,null,null,null)
+B.a76=new A.ar("Match your phone\u2019s light/dark appearance",null,B.a5B,null,null,null,null,null,null,null)
+B.a77=new A.ar("Customer records and history",null,null,null,null,null,null,null,null,null)
+B.a78=new A.ar("Biziness",null,null,null,null,null,null,null,null,null)
 B.EQ=new A.ar("Request delivery",null,null,null,null,null,null,null,null,null)
 B.a79=new A.ar("Price",null,null,null,null,null,null,null,null,null)
 B.ER=new A.ar("Create account",null,null,null,null,null,null,null,null,null)

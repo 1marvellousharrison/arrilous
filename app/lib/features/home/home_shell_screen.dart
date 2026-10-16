@@ -176,7 +176,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(ownerName.isEmpty ? 'biziness' : ownerName),
+            title: Text(ownerName.isEmpty ? 'Biziness' : ownerName),
             actions: [
               IconButton(
                 tooltip: 'Business details',
@@ -606,7 +606,7 @@ class _SetupFailed extends StatelessWidget {
         // so there was no back arrow and no way to sign out of a business that
         // could not be reached.
         leading: BackButton(onPressed: onSignOut),
-        title: const Text('biziness'),
+        title: const Text('Biziness'),
         actions: [
           IconButton(
             tooltip: 'Sign out',

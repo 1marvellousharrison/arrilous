@@ -111,7 +111,7 @@ class _BizinessAppState extends State<BizinessApp> {
       listenable: _theme,
       builder: (context, _) {
         return MaterialApp(
-          title: 'biziness',
+          title: 'Biziness — Your Business, Simplified',
           debugShowCheckedModeBanner: false,
           themeMode: _theme.mode,
           theme: buildLightTheme(),

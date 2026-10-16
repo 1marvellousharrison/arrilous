@@ -32,7 +32,7 @@ class RoleUnavailableScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: onSignOut),
-        title: const Text('biziness'),
+        title: const Text('Biziness'),
       ),
       body: SafeArea(
         child: EmptyState(

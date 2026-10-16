@@ -1,4 +1,4 @@
-# biziness — Small Business Management App
+# Biziness — Your Business, Simplified
 
 Mobile-first business operations app: **customer conversation → order → product
 availability → payment → delivery → delivery confirmation → completed
