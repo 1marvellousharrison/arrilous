@@ -48,6 +48,7 @@ class BusinessSetupFlow extends StatefulWidget {
   const BusinessSetupFlow({
     required this.business,
     required this.onComplete,
+    this.editToken,
     this.locationService,
     this.logoService,
     super.key,
@@ -55,6 +56,11 @@ class BusinessSetupFlow extends StatefulWidget {
 
   final BusinessRepository business;
   final VoidCallback onComplete;
+
+  /// The token minted by the owner-confirmation gate (see
+  /// docs/business-details-edit-otp.md). Present only when an existing profile
+  /// is being edited; the very first setup writes without it.
+  final String? editToken;
   final LocationService? locationService;
   final LogoService? logoService;
 
@@ -582,6 +588,7 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
           email: _email.text.trim(),
           // An empty string clears a removed logo; a data URL sets it.
           logo: _logo ?? '',
+          editToken: widget.editToken,
         );
       } else {
         await widget.business.createProfile(
@@ -628,6 +635,7 @@ class _BusinessSetupFlowState extends State<BusinessSetupFlow> {
         state: _state?.trim() ?? '',
         latitude: _coordinates?.latitude,
         longitude: _coordinates?.longitude,
+        editToken: widget.editToken,
       );
       if (!mounted) return;
       widget.onComplete();

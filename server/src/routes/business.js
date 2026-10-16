@@ -1,14 +1,28 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import { config } from '../config.js';
 import { queryOne, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusinessOwner, requireBusiness, requireOwner, findBusinessForUser } from '../middleware/business.js';
-import { conflict, validationFailed } from '../lib/errors.js';
+import { requireBusinessOwner, requireBusiness, requireOwner, requireBusinessEditToken, findBusinessForUser } from '../middleware/business.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+import {
+  conflict,
+  validationFailed,
+  tooManyRequests,
+  badRequest,
+  notFound,
+  serviceUnavailable,
+} from '../lib/errors.js';
+import { randomDigits, sha256 } from '../lib/password.js';
+import { signBusinessEditToken } from '../lib/jwt.js';
+import { maskEmail } from '../lib/normalise.js';
+import { emailService } from '../services/email.js';
 import { generateBusinessCode } from '../lib/staff.js';
 import {
   businessCreateSchema,
   businessUpdateSchema,
   locationSchema,
+  verifyOtpSchema,
   toFieldErrors,
 } from '../lib/validators.js';
 
@@ -144,38 +158,45 @@ businessRouter.post('/', requireAuth, requireBusinessOwner, async (req, res) => 
   res.status(201).json({ business: await businessWithLocation(business) });
 });
 
-businessRouter.patch('/', requireAuth, requireBusiness, requireOwner, async (req, res) => {
-  const body = parse(businessUpdateSchema, req.body);
-  const columns = {
-    business_name: 'business_name',
-    business_category: 'business_category',
-    business_description: 'business_description',
-    phone: 'phone',
-    email: 'email',
-    logo_url: 'logo_url',
-  };
+businessRouter.patch(
+  '/',
+  requireAuth,
+  requireBusiness,
+  requireOwner,
+  requireBusinessEditToken(),
+  async (req, res) => {
+    const body = parse(businessUpdateSchema, req.body);
+    const columns = {
+      business_name: 'business_name',
+      business_category: 'business_category',
+      business_description: 'business_description',
+      phone: 'phone',
+      email: 'email',
+      logo_url: 'logo_url',
+    };
 
-  const assignments = [];
-  const values = [];
-  for (const [key, column] of Object.entries(columns)) {
-    if (body[key] !== undefined) {
-      assignments.push(`${column} = ?`);
-      values.push(body[key]);
+    const assignments = [];
+    const values = [];
+    for (const [key, column] of Object.entries(columns)) {
+      if (body[key] !== undefined) {
+        assignments.push(`${column} = ?`);
+        values.push(body[key]);
+      }
     }
-  }
 
-  if (assignments.length > 0) {
-    assignments.push('updated_at = ?');
-    values.push(new Date().toISOString(), req.business.id);
-    await run(`UPDATE businesses SET ${assignments.join(', ')} WHERE id = ?`, ...values);
-  }
+    if (assignments.length > 0) {
+      assignments.push('updated_at = ?');
+      values.push(new Date().toISOString(), req.business.id);
+      await run(`UPDATE businesses SET ${assignments.join(', ')} WHERE id = ?`, ...values);
+    }
 
-  res.json({
-    business: await businessWithLocation(
-      await queryOne('SELECT * FROM businesses WHERE id = ?', req.business.id)
-    ),
-  });
-});
+    res.json({
+      business: await businessWithLocation(
+        await queryOne('SELECT * FROM businesses WHERE id = ?', req.business.id)
+      ),
+    });
+  }
+);
 
 businessRouter.get('/location', requireAuth, requireBusiness, requireOwner, async (req, res) => {
   const location = await queryOne(
@@ -190,11 +211,153 @@ businessRouter.get('/location', requireAuth, requireBusiness, requireOwner, asyn
 // the whole `business` (with the location nested) so a single write can refresh
 // the client's cached profile. Every other business write returns `business`,
 // and the Flutter client adopts that shape to avoid a redundant refetch.
-businessRouter.put('/location', requireAuth, requireBusiness, requireOwner, async (req, res) => {
-  const body = parse(locationSchema, req.body);
-  const location = await upsertLocation(req.business.id, body);
-  res.json({
-    business: await businessWithLocation(req.business),
-    location: publicLocation(location),
-  });
-});
+businessRouter.put(
+  '/location',
+  requireAuth,
+  requireBusiness,
+  requireOwner,
+  requireBusinessEditToken({ onlyWhenPresent: true }),
+  async (req, res) => {
+    const body = parse(locationSchema, req.body);
+    const location = await upsertLocation(req.business.id, body);
+    res.json({
+      business: await businessWithLocation(req.business),
+      location: publicLocation(location),
+    });
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// The owner-confirmation gate for editing an existing business.
+//
+// A code is emailed to the owner's account address; verifying it mints the
+// short-lived token the profile and location writes demand. See
+// docs/business-details-edit-otp.md.
+// ─────────────────────────────────────────────────────────────
+
+// POST /api/v1/business/edit-otp
+businessRouter.post(
+  '/edit-otp',
+  requireAuth,
+  requireBusiness,
+  requireOwner,
+  rateLimit({ keyPrefix: 'business-edit-otp', max: 10 }),
+  async (req, res) => {
+    const now = new Date();
+    const cooldownUntil = new Date(
+      now.getTime() - config.businessEdit.resendCooldownSeconds * 1000
+    );
+
+    const recent = await queryOne(
+      `SELECT id FROM business_edit_otps
+        WHERE business_id = ? AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1`,
+      req.business.id,
+      cooldownUntil.toISOString()
+    );
+    if (recent) {
+      throw tooManyRequests(
+        `Please wait ${config.businessEdit.resendCooldownSeconds} seconds before requesting another code.`
+      );
+    }
+
+    const owner = await queryOne(
+      'SELECT * FROM users WHERE id = ?',
+      req.business.owner_user_id
+    );
+    if (!owner?.email) {
+      throw badRequest('Add an email address to your account before editing your business details.');
+    }
+
+    const code = randomDigits(config.otp.length);
+    const expiresAt = new Date(
+      now.getTime() + config.businessEdit.ttlSeconds * 1000
+    ).toISOString();
+    const id = crypto.randomUUID();
+
+    await run(
+      `INSERT INTO business_edit_otps
+         (id, business_id, user_id, code_hash, max_attempts, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      id,
+      req.business.id,
+      owner.id,
+      sha256(`${owner.id}:${code}`),
+      config.otp.maxAttempts,
+      expiresAt
+    );
+
+    try {
+      await emailService.sendBusinessEditCode({
+        to: owner.email,
+        code,
+        ttlSeconds: config.businessEdit.ttlSeconds,
+      });
+    } catch {
+      // A code nobody can receive must not linger as a usable challenge.
+      await run('DELETE FROM business_edit_otps WHERE id = ?', id);
+      throw serviceUnavailable(
+        'We could not send your confirmation code right now. Please try again shortly.'
+      );
+    }
+
+    res.status(201).json({
+      status: 'success',
+      challenge_id: id,
+      channel: 'email',
+      destination: maskEmail(owner.email),
+      expires_at: expiresAt,
+      ...(config.otp.exposeInResponse ? { dev_code: code } : {}),
+    });
+  }
+);
+
+// POST /api/v1/business/edit-otp/verify
+businessRouter.post(
+  '/edit-otp/verify',
+  requireAuth,
+  requireBusiness,
+  requireOwner,
+  rateLimit({ keyPrefix: 'business-edit-verify', max: 15 }),
+  async (req, res) => {
+    const body = parse(verifyOtpSchema, req.body);
+    const challenge = await queryOne(
+      'SELECT * FROM business_edit_otps WHERE id = ?',
+      body.challenge_id
+    );
+
+    // The challenge is scoped to a business: a code minted for one owner can
+    // never be spent against another.
+    if (!challenge || challenge.business_id !== req.business.id) {
+      throw notFound('This confirmation request is no longer valid.');
+    }
+    if (challenge.consumed_at) throw badRequest('This code has already been used.');
+    if (challenge.attempts >= challenge.max_attempts) {
+      throw tooManyRequests('Too many incorrect codes. Request a new one.');
+    }
+    if (new Date(challenge.expires_at).getTime() <= Date.now()) {
+      throw badRequest('This code has expired. Request a new one.');
+    }
+
+    if (sha256(`${challenge.user_id}:${body.code}`) !== challenge.code_hash) {
+      await run(
+        'UPDATE business_edit_otps SET attempts = attempts + 1 WHERE id = ?',
+        challenge.id
+      );
+      throw badRequest('Incorrect confirmation code.');
+    }
+
+    await run(
+      'UPDATE business_edit_otps SET consumed_at = ? WHERE id = ?',
+      new Date().toISOString(),
+      challenge.id
+    );
+
+    const token = signBusinessEditToken(req.business.owner_user_id);
+    res.json({
+      status: 'success',
+      edit_token: token.token,
+      expires_at: token.expiresAt,
+    });
+  }
+);

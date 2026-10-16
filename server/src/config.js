@@ -118,6 +118,27 @@ export const config = {
     exposeInResponse: !isProd && process.env.OTP_EXPOSE_IN_RESPONSE !== 'false',
   },
 
+  // The owner-confirmation gate before an existing business profile may be
+  // edited. The code rides the same TTL/cooldown shape as the auth OTP; the
+  // token it mints covers one editing session. See
+  // docs/business-details-edit-otp.md.
+  businessEdit: {
+    ttlSeconds: Number.parseInt(process.env.BUSINESS_EDIT_OTP_TTL ?? '600', 10),
+    tokenTtlSeconds: Number.parseInt(
+      process.env.BUSINESS_EDIT_TOKEN_TTL ?? '900',
+      10
+    ),
+    resendCooldownSeconds: 45,
+  },
+
+  // Email is the cheapest owner-confirmation channel and the one every owner
+  // already has. Delivery turns on when a provider key is present; without one,
+  // non-prod echoes the code and prod refuses to pretend the mail was sent.
+  email: {
+    apiKey: process.env.RESEND_API_KEY ?? null,
+    from: process.env.OTP_EMAIL_FROM ?? 'Biziness <onboarding@resend.dev>',
+  },
+
   rateLimit: {
     windowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '900000', 10),
     maxAuthAttempts: Number.parseInt(process.env.RATE_LIMIT_MAX ?? '20', 10),

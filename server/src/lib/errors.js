@@ -24,6 +24,16 @@ export const unauthorized = (message = 'You need to sign in to continue.') =>
 export const forbidden = (message = 'You do not have access to this resource.') =>
   new ApiError(403, 'forbidden', message);
 
+// A write that needs the owner to have passed the business-edit OTP gate. The
+// app keys off `code` to re-run the gate instead of showing a dead end.
+export const editVerificationRequired = (
+  message = 'Confirm it is you before changing your business details.'
+) => new ApiError(403, 'business_edit_verification_required', message);
+
+export const serviceUnavailable = (
+  message = 'That service is unavailable right now. Please try again later.'
+) => new ApiError(503, 'service_unavailable', message);
+
 export const notFound = (message = 'Resource not found.') =>
   new ApiError(404, 'not_found', message);
 

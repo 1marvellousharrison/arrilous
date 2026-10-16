@@ -11,6 +11,7 @@ import 'package:dee_app/core/state/staff_repository.dart';
 import 'package:dee_app/core/state/wallet_repository.dart';
 import 'package:dee_app/core/state/transaction_repository.dart';
 import 'package:dee_app/features/home/home_shell_screen.dart';
+import 'package:dee_app/features/business/business_edit_gate.dart';
 import 'package:dee_app/features/business/business_setup_flow.dart';
 import 'package:dee_app/features/logistics/delivery_requests_list_screen.dart';
 import 'package:dee_app/features/logistics/notifications_screen.dart';
@@ -46,6 +47,18 @@ void main() {
         status,
         headers: {'content-type': 'application/json'},
       );
+
+  /// [OtpCodeInput] caps each box at one character, so the code has to be typed
+  /// box by box. Scoped to the gate so no other field on the page is touched.
+  Future<void> enterCode(WidgetTester tester, String code) async {
+    final fields = find.descendant(
+      of: find.byType(BusinessEditGate),
+      matching: find.byType(TextField),
+    );
+    for (var i = 0; i < code.length; i++) {
+      await tester.enterText(fields.at(i), code[i]);
+    }
+  }
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -149,6 +162,12 @@ void main() {
   Future<void> pumpShell(WidgetTester tester, {required Map<String, Object?> profile}) async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/auth/login')) return json(sessionBody);
+      if (request.url.path.endsWith('/business/edit-otp')) {
+        return json({'challenge_id': 'edit-1', 'destination': 'ada@example.com'});
+      }
+      if (request.url.path.endsWith('/business/edit-otp/verify')) {
+        return json({'edit_token': 'edit-token-1'});
+      }
       if (request.url.path.endsWith('/business')) return json(profile);
       return json(<String, Object>{});
     });
@@ -201,6 +220,10 @@ void main() {
     await tester.tap(find.text('Open business details'));
     await tester.pumpAndSettle();
 
+    expect(find.byType(BusinessEditGate), findsOneWidget, reason: 'changing an existing profile is confirmed first');
+    await enterCode(tester, '123456');
+    await tester.pumpAndSettle();
+
     expect(find.byType(BusinessSetupFlow), findsOneWidget, reason: 'the prompt leads to the screen that collects them');
     expect(find.text('Business settings'), findsOneWidget, reason: 'the profile exists, so it opens as settings');
   });
@@ -235,6 +258,10 @@ void main() {
     expect(find.text('Complete your business details'), findsOneWidget, reason: 'a sale always asks while details are missing');
 
     await tester.tap(find.text('Open business details'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BusinessEditGate), findsOneWidget, reason: 'changing an existing profile is confirmed first');
+    await enterCode(tester, '123456');
     await tester.pumpAndSettle();
 
     expect(find.byType(BusinessSetupFlow), findsOneWidget);
@@ -386,6 +413,42 @@ void main() {
     for (var index = 1; index <= 5; index++) {
       expect(find.text('TXN-0000$index'), findsOneWidget, reason: 'the full list carries every request');
     }
+  });
+
+  /// The app bar leads each owner tab with the most-reached-for action: the
+  /// wallet sits on every tab except Profile, and on Profile the storefront
+  /// (business details) icon takes the gear's place — Settings is already a row
+  /// there. Editing an existing profile then goes through the owner gate.
+  testWidgets('the app bar leads with the wallet and moves the storefront to the profile', (tester) async {
+    useTallSurface(tester);
+    await pumpShell(
+      tester,
+      profile: businessProfile(phone: '+2348012345678', area: 'Allen Hill'),
+    );
+
+    // The dashboard tab is the landing tab: wallet and settings, no storefront.
+    expect(find.byTooltip('Wallet'), findsOneWidget, reason: 'money is one tap away for the owner');
+    expect(find.byTooltip('Settings'), findsOneWidget);
+    expect(find.byTooltip('Business details'), findsNothing, reason: 'the shop icon moved to the profile tab');
+
+    await tester.tap(find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.text('Profile'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Business details'), findsOneWidget, reason: 'the storefront takes the gear slot on the profile');
+    expect(find.byTooltip('Wallet'), findsNothing, reason: 'the profile does not repeat the wallet shortcut');
+    expect(find.byTooltip('Settings'), findsNothing, reason: 'Settings is a row on the profile, not a gear');
+
+    await tester.tap(find.byTooltip('Business details'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BusinessEditGate), findsOneWidget, reason: 'editing an existing profile is confirmed first');
+    await enterCode(tester, '123456');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BusinessSetupFlow), findsOneWidget);
   });
 
   /// The shop name is shown the way a reader expects it — first letter

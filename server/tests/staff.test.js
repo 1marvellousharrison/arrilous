@@ -1,6 +1,6 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, createBusinessOwner } from './helpers.js';
+import { api, createBusinessOwner, openBusinessEdit } from './helpers.js';
 
 /**
  * Staff accounts (docs/staff-accounts.md).
@@ -77,8 +77,10 @@ describe('staff accounts — issuing and activation', () => {
     assert.match(owner.business.businessCode, BUSINESS_CODE);
 
     // The code does not change on a rename — staff logins depend on it.
+    const editToken = await openBusinessEdit(owner);
     await api('PATCH', '/business', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { business_name: 'Renamed Store' },
     });
     const after = await api('GET', '/business', { token: owner.token });

@@ -145,54 +145,71 @@ class ApiClient {
   /// so a wrong password never triggers it.
   final void Function()? onUnauthorized;
 
-  Future<dynamic> get(String path, {String? token}) =>
-      _send('GET', path, token: token);
+  Future<dynamic> get(String path, {String? token, Map<String, String>? headers}) =>
+      _send('GET', path, token: token, headers: headers);
 
-  Future<dynamic> post(String path, {Map<String, dynamic>? body, String? token}) =>
-      _send('POST', path, body: body, token: token);
+  Future<dynamic> post(
+    String path, {
+    Map<String, dynamic>? body,
+    String? token,
+    Map<String, String>? headers,
+  }) =>
+      _send('POST', path, body: body, token: token, headers: headers);
 
-  Future<dynamic> put(String path, {Map<String, dynamic>? body, String? token}) =>
-      _send('PUT', path, body: body, token: token);
+  Future<dynamic> put(
+    String path, {
+    Map<String, dynamic>? body,
+    String? token,
+    Map<String, String>? headers,
+  }) =>
+      _send('PUT', path, body: body, token: token, headers: headers);
 
-  Future<dynamic> patch(String path, {Map<String, dynamic>? body, String? token}) =>
-      _send('PATCH', path, body: body, token: token);
+  Future<dynamic> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    String? token,
+    Map<String, String>? headers,
+  }) =>
+      _send('PATCH', path, body: body, token: token, headers: headers);
 
-  Future<dynamic> delete(String path, {String? token}) =>
-      _send('DELETE', path, token: token);
+  Future<dynamic> delete(String path, {String? token, Map<String, String>? headers}) =>
+      _send('DELETE', path, token: token, headers: headers);
 
   Future<dynamic> _send(
     String method,
     String path, {
     Map<String, dynamic>? body,
     String? token,
+    Map<String, String>? headers,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
-    final headers = <String, String>{
+    final requestHeaders = <String, String>{
       'accept': 'application/json',
       if (body != null) 'content-type': 'application/json',
       if (token != null && token.isNotEmpty) 'authorization': 'Bearer $token',
+      ...?headers,
     };
 
     late http.Response response;
     try {
       response = await switch (method) {
-        'GET' => _client.get(uri, headers: headers),
+        'GET' => _client.get(uri, headers: requestHeaders),
         'POST' => _client.post(
             uri,
-            headers: headers,
+            headers: requestHeaders,
             body: body == null ? null : jsonEncode(body),
           ),
         'PUT' => _client.put(
             uri,
-            headers: headers,
+            headers: requestHeaders,
             body: body == null ? null : jsonEncode(body),
           ),
         'PATCH' => _client.patch(
             uri,
-            headers: headers,
+            headers: requestHeaders,
             body: body == null ? null : jsonEncode(body),
           ),
-        'DELETE' => _client.delete(uri, headers: headers),
+        'DELETE' => _client.delete(uri, headers: requestHeaders),
         _ => throw ArgumentError('Unsupported method $method'),
       }
           .timeout(timeout);

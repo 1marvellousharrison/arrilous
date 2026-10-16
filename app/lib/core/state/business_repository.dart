@@ -118,6 +118,22 @@ class BusinessLocation {
   bool get hasCoordinates => latitude != null && longitude != null;
 }
 
+/// A one-time code challenge that proves an owner before business details may
+/// be edited. Mirrors the auth OTP shape so the UI can be reused.
+class BusinessEditChallenge {
+  const BusinessEditChallenge({
+    required this.challengeId,
+    required this.destination,
+    this.devCode,
+    this.expiresAt,
+  });
+
+  final String challengeId;
+  final String destination;
+  final String? devCode;
+  final DateTime? expiresAt;
+}
+
 /// Owns the business profile for the signed-in owner (Phases 1-2).
 ///
 /// The profile is always fetched from the API rather than inferred from the
@@ -220,6 +236,7 @@ class BusinessRepository extends ChangeNotifier {
     String? phone,
     String? email,
     String? logo,
+    String? editToken,
   }) async {
     final body = <String, dynamic>{
       'business_name': ?businessName,
@@ -233,7 +250,12 @@ class BusinessRepository extends ChangeNotifier {
     };
     if (body.isEmpty) return _business!;
 
-    final data = await _api.patch('/business', token: _token, body: body);
+    final data = await _api.patch(
+      '/business',
+      token: _token,
+      body: body,
+      headers: _editHeaders(editToken),
+    );
     return _adopt(data);
   }
 
@@ -247,10 +269,12 @@ class BusinessRepository extends ChangeNotifier {
     String? country,
     double? latitude,
     double? longitude,
+    String? editToken,
   }) async {
     final data = await _api.put(
       '/business/location',
       token: _token,
+      headers: _editHeaders(editToken),
       body: {
         'address': address,
         'city': _blankToNull(city),
@@ -263,6 +287,46 @@ class BusinessRepository extends ChangeNotifier {
     );
     return _adopt(data);
   }
+
+  /// Asks the server to email a one-time code to the owner. The code proves it is
+  /// really the owner before an existing profile is changed.
+  Future<BusinessEditChallenge> requestEditOtp() async {
+    final data = await _api.post('/business/edit-otp', token: _token)
+        as Map<String, dynamic>;
+    return BusinessEditChallenge(
+      challengeId: data['challenge_id'] as String,
+      destination: data['destination'] as String? ?? 'your email',
+      devCode: data['dev_code'] as String?,
+      expiresAt: DateTime.tryParse(data['expires_at'] as String? ?? ''),
+    );
+  }
+
+  /// Verifies the code and returns the short-lived token every profile write of
+  /// this editing session must carry.
+  Future<String> verifyEditOtp({
+    required String challengeId,
+    required String code,
+  }) async {
+    final data = await _api.post(
+      '/business/edit-otp/verify',
+      token: _token,
+      body: {'challenge_id': challengeId, 'code': code},
+    ) as Map<String, dynamic>;
+    final token = data['edit_token'] as String?;
+    if (token == null || token.isEmpty) {
+      throw ApiException(
+        502,
+        'malformed_response',
+        'The server did not return an edit token. Please try again.',
+      );
+    }
+    return token;
+  }
+
+  Map<String, String>? _editHeaders(String? editToken) =>
+      (editToken == null || editToken.isEmpty)
+          ? null
+          : {'x-business-edit-token': editToken};
 
   BusinessProfile _adopt(dynamic data) {
     final raw = (data as Map<String, dynamic>)['business'];

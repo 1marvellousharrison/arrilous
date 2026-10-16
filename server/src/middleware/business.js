@@ -1,5 +1,6 @@
 import { queryOne } from '../db/index.js';
-import { notFound, forbidden } from '../lib/errors.js';
+import { notFound, forbidden, editVerificationRequired } from '../lib/errors.js';
+import { verifyBusinessEditToken } from '../lib/jwt.js';
 
 /**
  * Resolves the business that owns the request from the access token.
@@ -104,4 +105,39 @@ export function requireOwner(req, _res, next) {
   } catch (error) {
     return next(error);
   }
+}
+
+/**
+ * Owner-confirmation gate for editing an existing business profile.
+ *
+ * Assumes requireBusiness + requireOwner have already resolved req.business, and
+ * demands a short-lived `x-business-edit-token` minted after the owner passed
+ * the email OTP. The subject must be the business's owner, so a token for one
+ * business cannot unlock another.
+ *
+ * `onlyWhenPresent` exempts the first write: a business that has no location
+ * yet is still being set up, not edited, so its very first location write is
+ * allowed through. Every later write is a change and needs the token. See
+ * docs/business-details-edit-otp.md.
+ */
+export function requireBusinessEditToken({ onlyWhenPresent = false } = {}) {
+  return async function businessEditGate(req, _res, next) {
+    try {
+      if (onlyWhenPresent) {
+        const existing = await queryOne(
+          'SELECT id FROM business_locations WHERE business_id = ?',
+          req.business.id
+        );
+        if (!existing) return next();
+      }
+
+      const claims = verifyBusinessEditToken(req.get('x-business-edit-token'));
+      if (!claims || claims.sub !== req.business.owner_user_id) {
+        throw editVerificationRequired();
+      }
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
 }

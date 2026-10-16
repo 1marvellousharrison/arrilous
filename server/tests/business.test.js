@@ -1,6 +1,6 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, createUser, createBusinessOwner, uniquePhone } from './helpers.js';
+import { api, createUser, createBusinessOwner, openBusinessEdit, uniquePhone } from './helpers.js';
 
 describe('phase 1 — business profile', () => {
   test('a new owner sees no business until setup completes', async () => {
@@ -75,8 +75,10 @@ describe('phase 1 — business profile', () => {
 
   test('updates only the fields that were sent', async () => {
     const owner = await createBusinessOwner('Original Name');
+    const editToken = await openBusinessEdit(owner);
     const res = await api('PATCH', '/business', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { business_description: 'We sell provisions weekly.' },
     });
 
@@ -144,9 +146,11 @@ describe('phase 1 — business logo', () => {
 
   test('updates and clears the logo', async () => {
     const owner = await createBusinessOwner('Swapping Store');
+    const editToken = await openBusinessEdit(owner);
 
     const saved = await api('PATCH', '/business', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { logo_url: PNG },
     });
     assert.equal(saved.status, 200);
@@ -154,6 +158,7 @@ describe('phase 1 — business logo', () => {
 
     const cleared = await api('PATCH', '/business', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { logo_url: null },
     });
     assert.equal(cleared.status, 200);
@@ -162,8 +167,10 @@ describe('phase 1 — business logo', () => {
 
   test('refuses a logo that is not an image data URL', async () => {
     const owner = await createBusinessOwner('Text Logo');
+    const editToken = await openBusinessEdit(owner);
     const res = await api('PATCH', '/business', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { logo_url: 'https://example.com/logo.png' },
     });
 
@@ -248,8 +255,10 @@ describe('phase 2 — business location', () => {
       token: owner.token,
       body: { address: 'Old Address' },
     });
+    const editToken = await openBusinessEdit(owner);
     const res = await api('PUT', '/business/location', {
       token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
       body: { address: 'New Address', city: 'Yaba', area: 'Akoka' },
     });
 
@@ -287,5 +296,98 @@ describe('phase 2 — business location', () => {
     // There is no route that accepts a location id, so the id cannot be replayed.
     const replay = await api('GET', `/business/location/${locationId}`, { token: intruder.token });
     assert.equal(replay.status, 404);
+  });
+});
+
+// The owner-confirmation gate over an existing profile. See
+// docs/business-details-edit-otp.md.
+describe('phase 1 — business edit confirmation', () => {
+  test('refuses a profile edit that did not pass the gate', async () => {
+    const owner = await createBusinessOwner('Unguarded Store');
+    const res = await api('PATCH', '/business', {
+      token: owner.token,
+      body: { business_name: 'Sneaky Rename' },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error.code, 'business_edit_verification_required');
+  });
+
+  test('sends a code by email to the owner and masks the destination', async () => {
+    const owner = await createBusinessOwner('Code Store');
+    const res = await api('POST', '/business/edit-otp', { token: owner.token });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.channel, 'email');
+    assert.match(res.body.destination, /^.\*+@/);
+    assert.equal(typeof res.body.challenge_id, 'string');
+    assert.ok(res.body.dev_code, 'the suite runs with the code echoed back');
+  });
+
+  test('a verified code mints a token that unlocks the profile write', async () => {
+    const owner = await createBusinessOwner('Unlocked Store');
+    const editToken = await openBusinessEdit(owner);
+
+    const res = await api('PATCH', '/business', {
+      token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
+      body: { business_name: 'Renamed Store' },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.business.businessName, 'Renamed Store');
+  });
+
+  test('rejects an incorrect confirmation code', async () => {
+    const owner = await createBusinessOwner('Wrong Code Store');
+    const requested = await api('POST', '/business/edit-otp', { token: owner.token });
+    const res = await api('POST', '/business/edit-otp/verify', {
+      token: owner.token,
+      body: { challenge_id: requested.body.challenge_id, code: '000000' },
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.message, 'Incorrect confirmation code.');
+  });
+
+  test('an edit token belongs to one owner and cannot unlock another', async () => {
+    const owner = await createBusinessOwner('Owner A');
+    const other = await createBusinessOwner('Owner B');
+    const editToken = await openBusinessEdit(owner);
+
+    const res = await api('PATCH', '/business', {
+      token: other.token,
+      headers: { 'x-business-edit-token': editToken },
+      body: { business_name: 'Not Yours' },
+    });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error.code, 'business_edit_verification_required');
+  });
+
+  test('the first location write is setup, but a later change needs the gate', async () => {
+    const owner = await createBusinessOwner('First Address Store');
+
+    const first = await api('PUT', '/business/location', {
+      token: owner.token,
+      body: { address: '1 First Street' },
+    });
+    assert.equal(first.status, 200, 'the first write finishes setup, not an edit');
+
+    const blocked = await api('PUT', '/business/location', {
+      token: owner.token,
+      body: { address: '2 Second Street' },
+    });
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.error.code, 'business_edit_verification_required');
+
+    const editToken = await openBusinessEdit(owner);
+    const allowed = await api('PUT', '/business/location', {
+      token: owner.token,
+      headers: { 'x-business-edit-token': editToken },
+      body: { address: '2 Second Street' },
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.body.location.address, '2 Second Street');
   });
 });

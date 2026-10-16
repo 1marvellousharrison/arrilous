@@ -11,6 +11,7 @@ import '../../core/state/transaction_repository.dart';
 import '../../core/state/wallet_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../business/business_edit_gate.dart';
 import '../business/business_setup_flow.dart';
 import '../customers/customer_form_screen.dart';
 import '../customers/customers_screen.dart';
@@ -147,14 +148,30 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     return false;
   }
 
-  Future<void> _openBusinessDetails() => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => BusinessSetupFlow(
-            business: widget.business,
-            onComplete: widget.business.load,
-          ),
+  /// Opens the business-details editor. Editing an existing profile is the
+  /// shop's identity, so it goes through the owner-confirmation gate first; the
+  /// very first setup (no profile yet) is not a change and opens directly.
+  Future<void> _openBusinessDetails() async {
+    String? editToken;
+    if (widget.business.hasProfile) {
+      editToken = await Navigator.of(context).push<String>(
+        MaterialPageRoute<String>(
+          builder: (_) => BusinessEditGate(business: widget.business),
         ),
       );
+      if (!mounted || editToken == null) return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BusinessSetupFlow(
+          business: widget.business,
+          editToken: editToken,
+          onComplete: widget.business.load,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,22 +210,42 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         return Scaffold(
           appBar: AppBar(
             // The Profile tab is the shop's own page: the bar leads with the
-            // tab name where the business name sits elsewhere, and it drops the
-            // business-details shortcut, keeping only settings.
-            title: _index == 4 ? const Text('Profile') : Text(ownerName.isEmpty ? 'Biziness' : ownerName),
-            actions: [
-              if (!_isStaff && _index != 4)
-                IconButton(
-                  tooltip: 'Business details',
-                  onPressed: _openBusinessDetails,
-                  icon: const Icon(Icons.storefront_outlined),
-                ),
-              IconButton(
-                tooltip: 'Settings',
-                onPressed: widget.onOpenSettings,
-                icon: const Icon(Icons.settings_outlined),
-              ),
-            ],
+            // tab name where the business name sits elsewhere, and the business
+            // (storefront) icon moves here — Settings is already a row in the
+            // profile list, so its gear would be a duplicate. On the other tabs
+            // the storefront's slot is taken by the wallet, so money is always
+            // one tap away for the owner.
+            title: _index == 4
+                ? const Text('Profile')
+                : Text(ownerName.isEmpty ? 'Biziness' : ownerName),
+            actions: _index == 4
+                ? [
+                    if (_isStaff)
+                      IconButton(
+                        tooltip: 'Settings',
+                        onPressed: widget.onOpenSettings,
+                        icon: const Icon(Icons.settings_outlined),
+                      )
+                    else
+                      IconButton(
+                        tooltip: 'Business details',
+                        onPressed: _openBusinessDetails,
+                        icon: const Icon(Icons.storefront_outlined),
+                      ),
+                  ]
+                : [
+                    if (!_isStaff)
+                      IconButton(
+                        tooltip: 'Wallet',
+                        onPressed: _openWallet,
+                        icon: const Icon(Icons.account_balance_wallet_outlined),
+                      ),
+                    IconButton(
+                      tooltip: 'Settings',
+                      onPressed: widget.onOpenSettings,
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
+                  ],
           ),
           body: _tabs(),
           bottomNavigationBar: NavigationBar(
@@ -288,7 +325,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onOpenSettings: widget.onOpenSettings,
           onProducts: _openProducts,
           onCustomers: _openCustomers,
-          onWallet: _openWallet,
           onStaff: _openStaff,
           business: widget.business,
           logistics: widget.logistics,
@@ -445,7 +481,6 @@ class _ProfileScreen extends StatefulWidget {
     required this.onOpenSettings,
     required this.onProducts,
     required this.onCustomers,
-    required this.onWallet,
     required this.onStaff,
     required this.business,
     required this.logistics,
@@ -455,7 +490,6 @@ class _ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final Future<void> Function() onProducts;
   final Future<void> Function() onCustomers;
-  final Future<void> Function() onWallet;
   final Future<void> Function() onStaff;
   final BusinessRepository business;
   final LogisticsRepository logistics;
@@ -502,8 +536,6 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           const SizedBox(height: AppSpacing.lg),
           ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
           ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
-          if (!widget.isStaff)
-            ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Wallet'), subtitle: const Text('Balance, funding and payouts'), onTap: widget.onWallet),
           if (!widget.isStaff)
             ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
           ListTile(

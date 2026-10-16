@@ -108,3 +108,22 @@ export async function createBusinessOwner(name = 'Test Store') {
   };
 }
 
+/**
+ * Passes the owner-confirmation gate for an existing business and returns the
+ * short-lived edit token. Writes to the profile and to an existing location
+ * demand it; the first location write does not. Tests use the dev-echoed code.
+ */
+export async function openBusinessEdit(owner) {
+  const requested = await api('POST', '/business/edit-otp', { token: owner.token });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  const verified = await api('POST', '/business/edit-otp/verify', {
+    token: owner.token,
+    body: {
+      challenge_id: requested.body.challenge_id,
+      code: requested.body.dev_code,
+    },
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.body));
+  return verified.body.edit_token;
+}
+

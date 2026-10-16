@@ -239,6 +239,58 @@ void main() {
       );
     });
 
+    test('sends the owner-confirmation token on profile and location writes', () async {
+      await withRepo(
+        (_) async => json(businessBody),
+        (business, _, _) async {
+          await business.updateProfile(businessName: 'Ada', editToken: 'edit-token-1');
+          expect(log.last.headers['x-business-edit-token'], 'edit-token-1');
+
+          await business.saveLocation(address: 'New Address', editToken: 'edit-token-1');
+          expect(log.last.headers['x-business-edit-token'], 'edit-token-1');
+        },
+      );
+    });
+
+    test('omits the edit token when none is held, as first-time setup does', () async {
+      await withRepo(
+        (_) async => json(businessBody, status: 201),
+        (business, _, _) async {
+          await business.createProfile(businessName: 'Ada');
+          expect(log.last.headers.containsKey('x-business-edit-token'), isFalse);
+        },
+      );
+    });
+
+    test('requests an edit-otp challenge and reads where it was sent', () async {
+      await withRepo(
+        (_) async => json({
+          'challenge_id': 'edit-1',
+          'destination': 'a***@example.com',
+        }),
+        (business, _, _) async {
+          final challenge = await business.requestEditOtp();
+          expect(challenge.challengeId, 'edit-1');
+          expect(challenge.destination, 'a***@example.com');
+          expect(log.last.method, 'POST');
+          expect(log.last.url.path.endsWith('/business/edit-otp'), isTrue);
+        },
+      );
+    });
+
+    test('verifies the edit code and returns the token it mints', () async {
+      await withRepo(
+        (_) async => json({'edit_token': 'edit-token-1'}),
+        (business, _, _) async {
+          final token = await business.verifyEditOtp(challengeId: 'edit-1', code: '123456');
+          expect(token, 'edit-token-1');
+          final body = jsonDecode(log.last.body) as Map<String, dynamic>;
+          expect(body['challenge_id'], 'edit-1');
+          expect(body['code'], '123456');
+        },
+      );
+    });
+
     test('surfaces a server field error for the form', () async {
       await withRepo(
         (_) async => json({
