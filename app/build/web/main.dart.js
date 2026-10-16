@@ -50970,10 +50970,10 @@ return s},
 $S:0}
 A.WE.prototype={
 D(a){var s,r=null,q=A.k(a),p=A.OW(A.bZ(16),A.aUH("assets/images/logo.png",B.iE,48,48),B.br),o=q.ok,n=o.r
-n=A.l("Biziness \u2014 Your Business, Simplified",r,r,r,n==null?r:n.bJ(B.R),r,r,r)
+n=A.l("Biziness",r,r,r,n==null?r:n.bJ(B.R),r,r,r)
 o=o.Q
 s=t.p
-return A.ar(A.b([p,B.aC,A.aq(A.b([n,A.l("Sales, payments & deliveries",r,r,r,o==null?r:o.ak(q.ax.k3.aw(0.55)),r,r,r)],s),B.q,B.e,B.f,0,B.n)],s),B.m,B.e,B.f,0,r)}}
+return A.ar(A.b([p,B.aC,A.aq(A.b([n,A.l("Your Business, Simplified",r,r,r,o==null?r:o.ak(q.ax.k3.aw(0.55)),r,r,r)],s),B.q,B.e,B.f,0,B.n)],s),B.m,B.e,B.f,0,r)}}
 A.Lq.prototype={
 D(a){var s=null
 return A.xa(A.cc(this.c,s,s,s),A.l(this.d,s,s,s,s,s,s,s),this.e,A.ajr(s,s,s,s,s,s,s,s,s,A.k(a).ax.k3,s,s,s,s,s,new A.ax(A.k(a).ch,1,B.r,-1),s,s,s,s))}}
