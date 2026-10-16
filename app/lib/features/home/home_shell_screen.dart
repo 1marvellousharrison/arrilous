@@ -192,10 +192,10 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            // The Profile tab is the shop's own page and already leads with its
-            // identity card, so the bar drops the business name and the
-            // business-details shortcut there and keeps only settings.
-            title: _index == 4 ? null : Text(ownerName.isEmpty ? 'Biziness' : ownerName),
+            // The Profile tab is the shop's own page: the bar leads with the
+            // tab name where the business name sits elsewhere, and it drops the
+            // business-details shortcut, keeping only settings.
+            title: _index == 4 ? const Text('Profile') : Text(ownerName.isEmpty ? 'Biziness' : ownerName),
             actions: [
               if (!_isStaff && _index != 4)
                 IconButton(
@@ -498,8 +498,6 @@ class _ProfileScreenState extends State<_ProfileScreen> {
       builder: (context, _) => ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text('Profile', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: AppSpacing.lg),
           _businessHeader(widget.business.business),
           const SizedBox(height: AppSpacing.lg),
           ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
