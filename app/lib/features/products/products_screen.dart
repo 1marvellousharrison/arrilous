@@ -15,10 +15,19 @@ import 'product_form_screen.dart';
 /// rather than filtering a list already in memory, so the catalog stays correct
 /// once it outgrows one screen.
 class ProductsScreen extends StatefulWidget {
-  const ProductsScreen({required this.catalog, required this.businessName, super.key});
+  const ProductsScreen({
+    required this.catalog,
+    required this.businessName,
+    super.key,
+    this.readOnly = false,
+  });
 
   final CatalogRepository catalog;
   final String businessName;
+
+  /// A staff member may read the catalog but never change it: no add button, no
+  /// archive, and the detail opens for viewing only.
+  final bool readOnly;
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -69,11 +78,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _openForm(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Add product'),
-          ),
+          floatingActionButton: widget.readOnly
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: () => _openForm(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add product'),
+                ),
           body: Column(
             children: [
               Padding(
@@ -167,6 +178,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           final product = catalog.products[index];
           return _ProductTile(
             product: product,
+            readOnly: widget.readOnly,
             onTap: () => _openForm(context, product),
             onArchive: () => _toggleArchive(context, product),
           );
@@ -189,6 +201,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         builder: (_) => ProductFormScreen(
           catalog: widget.catalog,
           product: product,
+          readOnly: widget.readOnly,
         ),
       ),
     );
@@ -301,11 +314,13 @@ class _ProductTile extends StatelessWidget {
     required this.product,
     required this.onTap,
     required this.onArchive,
+    this.readOnly = false,
   });
 
   final Product product;
   final VoidCallback onTap;
   final VoidCallback onArchive;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -383,14 +398,15 @@ class _ProductTile extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              tooltip: product.active ? 'Archive' : 'Restore',
-              onPressed: onArchive,
-              icon: Icon(
-                product.active ? Icons.archive_outlined : Icons.unarchive_outlined,
-                size: 20,
+            if (!readOnly)
+              IconButton(
+                tooltip: product.active ? 'Archive' : 'Restore',
+                onPressed: onArchive,
+                icon: Icon(
+                  product.active ? Icons.archive_outlined : Icons.unarchive_outlined,
+                  size: 20,
+                ),
               ),
-            ),
           ],
         ),
       ),

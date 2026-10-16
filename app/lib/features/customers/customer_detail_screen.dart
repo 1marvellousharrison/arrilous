@@ -13,10 +13,12 @@ class CustomerDetailScreen extends StatefulWidget {
     required this.customers,
     required this.customerId,
     super.key,
+    this.canEdit = true,
   });
 
   final CustomerRepository customers;
   final String customerId;
+  final bool canEdit;
 
   @override
   State<CustomerDetailScreen> createState() => _CustomerDetailScreenState();
@@ -67,7 +69,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       appBar: AppBar(
         title: Text(customer?.name ?? 'Customer'),
         actions: [
-          if (customer != null)
+          if (customer != null && widget.canEdit)
             IconButton(
               tooltip: 'Edit',
               onPressed: () async {

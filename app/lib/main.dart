@@ -8,12 +8,14 @@ import 'core/state/catalog_repository.dart';
 import 'core/state/customer_repository.dart';
 import 'core/state/dashboard_repository.dart';
 import 'core/state/logistics_repository.dart';
+import 'core/state/staff_repository.dart';
 import 'core/state/theme_controller.dart';
 import 'core/state/transaction_repository.dart';
 import 'core/state/wallet_repository.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
+import 'features/auth/staff_activation_screen.dart';
 import 'features/logistics/logistics_workspace_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/auth/verify_otp_screen.dart';
@@ -66,6 +68,7 @@ class _BizinessAppState extends State<BizinessApp> {
   late final DashboardRepository _dashboard = DashboardRepository(_api, _auth);
   late final LogisticsRepository _logistics = LogisticsRepository(_api, _auth);
   late final WalletRepository _wallet = WalletRepository(_api, _auth);
+  late final StaffRepository _staff = StaffRepository(_api, _auth);
 
   /// Repositories that cache data belonging to the signed-in owner.
   List<ChangeNotifier> get _scopedRepositories => [
@@ -76,6 +79,7 @@ class _BizinessAppState extends State<BizinessApp> {
         _dashboard,
         _logistics,
         _wallet,
+        _staff,
       ];
 
   bool _booting = true;
@@ -128,6 +132,7 @@ class _BizinessAppState extends State<BizinessApp> {
                   dashboard: _dashboard,
                   logistics: _logistics,
                   wallet: _wallet,
+                  staff: _staff,
                   onSignedOut: _clearScopedState,
                 ),
         );
@@ -142,6 +147,7 @@ class _BizinessAppState extends State<BizinessApp> {
     _dashboard.reset();
     _logistics.requests = const [];
     _wallet.reset();
+    _staff.reset();
   }
 }
 
@@ -197,6 +203,7 @@ class _Root extends StatelessWidget {
     required this.dashboard,
     required this.logistics,
     required this.wallet,
+    required this.staff,
     required this.onSignedOut,
   });
 
@@ -209,6 +216,7 @@ class _Root extends StatelessWidget {
   final DashboardRepository dashboard;
   final LogisticsRepository logistics;
   final WalletRepository wallet;
+  final StaffRepository staff;
   final VoidCallback onSignedOut;
 
   @override
@@ -231,6 +239,7 @@ class _Root extends StatelessWidget {
               identifier: identifier,
               purpose: 'login_verification',
             ),
+            onActivateStaff: () => _activateStaff(context),
           );
         }
 
@@ -238,7 +247,9 @@ class _Root extends StatelessWidget {
         // into the business shell asks `GET /business` a question the server
         // refuses for them, which used to strand the account on an error screen
         // with no way back. Give them a real screen with a way out instead.
-        if (user.role != 'business') {
+        // Staff, by contrast, belong to a business and use the same shell as
+        // the owner — restricted to their own slice of it.
+        if (user.role == 'logistics_partner' || user.role == 'rider') {
           return LogisticsWorkspaceScreen(
             user: user,
             logistics: logistics,
@@ -262,6 +273,7 @@ class _Root extends StatelessWidget {
           dashboard: dashboard,
           logistics: logistics,
           wallet: wallet,
+          staff: staff,
           onSignOut: auth.signOut,
           onOpenSettings: () {
             Navigator.of(context).push(
@@ -276,8 +288,18 @@ class _Root extends StatelessWidget {
     );
   }
 
-  void _openSignUp(BuildContext context) {
-    Navigator.of(context).push(
+  /// Lets a new staff member redeem the code their owner gave them, then hands
+  /// the code back so the login form signs them in. No session is created by
+  /// activation itself.
+  Future<String?> _activateStaff(BuildContext context) {
+    return Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => StaffActivationScreen(auth: auth),
+      ),
+    );
+  }
+
+  void _openSignUp(BuildContext context) {    Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SignUpFlow(
           auth: auth,

@@ -154,6 +154,9 @@ class StatusHistoryEntry {
   bool get isCreation => oldValue == null;
 
   String get label {
+    // A staff note carries no status move, so it is labelled on its own rather
+    // than dressed up as "Note set to ".
+    if (statusType == 'note') return 'Note';
     final axis = axisForWire(statusType)?.label ?? statusType;
     if (isCreation) return '$axis set to ${_pretty(newValue)}';
     return '$axis: ${_pretty(oldValue!)} → ${_pretty(newValue)}';
@@ -609,12 +612,14 @@ class TransactionRepository extends ChangeNotifier {
   }
 
   /// Phase 7 write. Any subset of the axes may move; the server decides whether
-  /// the combination is legal.
+  /// the combination is legal. A note alone is allowed — a staff member
+  /// annotates a sale without moving it.
   Future<Transaction?> updateStatuses(Map<String, String> changes, {String? note}) async {
-    if (changes.isEmpty) return _detail;
+    final hasNote = note != null && note.trim().isNotEmpty;
+    if (changes.isEmpty && !hasNote) return _detail;
 
     final body = <String, dynamic>{...changes};
-    if (note != null && note.trim().isNotEmpty) body['note'] = note.trim();
+    if (hasNote) body['note'] = note.trim();
 
     final data = await _api.patch(
       '/transactions/${_detail?.id}/statuses',

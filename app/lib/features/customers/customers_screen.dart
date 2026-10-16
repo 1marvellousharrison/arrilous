@@ -11,9 +11,13 @@ import 'customer_form_screen.dart';
 
 /// Phase 4 — customer list with search.
 class CustomersScreen extends StatefulWidget {
-  const CustomersScreen({required this.customers, super.key});
+  const CustomersScreen({required this.customers, super.key, this.canEdit = true});
 
   final CustomerRepository customers;
+
+  /// A staff member may add a customer but not rewrite one, so the detail opens
+  /// without its edit action.
+  final bool canEdit;
 
   @override
   State<CustomersScreen> createState() => _CustomersScreenState();
@@ -158,6 +162,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         builder: (_) => CustomerDetailScreen(
           customers: widget.customers,
           customerId: customer.id,
+          canEdit: widget.canEdit,
         ),
       ),
     );

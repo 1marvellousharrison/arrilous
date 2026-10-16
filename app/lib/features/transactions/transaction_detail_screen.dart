@@ -18,6 +18,7 @@ class TransactionDetailScreen extends StatefulWidget {
     required this.transactionId,
     super.key,
     this.showBackButton = true,
+    this.canChangeStatus = true,
   });
 
   final TransactionRepository transactions;
@@ -25,6 +26,10 @@ class TransactionDetailScreen extends StatefulWidget {
 
   /// False when this screen is pushed as the root of the shell tab.
   final bool showBackButton;
+
+  /// A staff member may annotate a sale but never move its status; the action
+  /// bar offers a note instead of the transition chips.
+  final bool canChangeStatus;
 
   @override
   State<TransactionDetailScreen> createState() => _TransactionDetailScreenState();
@@ -423,8 +428,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     );
   }
 
-  /// Only the transitions the API would accept from here.
+  /// Only the transitions the API would accept from here. A staff member gets a
+  /// single note action instead, because moving a status is not theirs to do.
   Widget _actionBar(TransactionRepository repository, Transaction transaction) {
+    if (!widget.canChangeStatus) {
+      return _bottomBar(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Add a note',
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: _acting ? null : () => _addNote(repository),
+              icon: const Icon(Icons.edit_note),
+              label: const Text('Add note'),
+            ),
+          ],
+        ),
+      );
+    }
+
     final actions = <_StatusAction>[];
     for (final axis in TransactionAxis.values) {
       for (final value in repository.availableTransitions(transaction, axis)) {
@@ -433,18 +462,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     }
 
     if (actions.isEmpty) {
-      return Container(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.md,
-          AppSpacing.lg,
-          MediaQuery.of(context).padding.bottom + AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-        ),
-        child: Row(
+      return _bottomBar(
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
@@ -466,18 +485,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       );
     }
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        MediaQuery.of(context).padding.bottom + AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-      ),
-      child: Column(
+    return _bottomBar(
+      Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -513,6 +522,71 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// The shared bottom action surface, so the note bar and the transition bar
+  /// sit on the same footing.
+  Widget _bottomBar(Widget child) => Container(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          MediaQuery.of(context).padding.bottom + AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+        ),
+        child: child,
+      );
+
+  /// Staff note: appends to the timeline without moving any status. The server
+  /// accepts a note on its own and records it as a `note` entry.
+  Future<void> _addNote(TransactionRepository repository) async {
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add a note'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Note',
+            hintText: 'What happened with this sale?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Save note'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (note == null || note.isEmpty) return;
+
+    setState(() => _acting = true);
+    try {
+      await repository.updateStatuses(const {}, note: note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note added.')),
+      );
+    } on ApiException catch (error) {
+      _showError(error.message);
+    } on NetworkException catch (error) {
+      _showError(error.message);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
   }
 
   static IconData _iconFor(TransactionAxis axis) => switch (axis) {

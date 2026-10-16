@@ -7,6 +7,7 @@ import 'package:dee_app/core/state/catalog_repository.dart';
 import 'package:dee_app/core/state/customer_repository.dart';
 import 'package:dee_app/core/state/dashboard_repository.dart';
 import 'package:dee_app/core/state/logistics_repository.dart';
+import 'package:dee_app/core/state/staff_repository.dart';
 import 'package:dee_app/core/state/wallet_repository.dart';
 import 'package:dee_app/core/state/transaction_repository.dart';
 import 'package:dee_app/features/home/home_shell_screen.dart';
@@ -84,6 +85,7 @@ void main() {
           dashboard: DashboardRepository(api, auth),
           logistics: LogisticsRepository(api, auth),
           wallet: WalletRepository(api, auth),
+          staff: StaffRepository(api, auth),
           onOpenSettings: () {},
           onSignOut: () async => signedOut = true,
         ),
@@ -169,6 +171,7 @@ void main() {
           dashboard: DashboardRepository(api, auth),
           logistics: LogisticsRepository(api, auth),
           wallet: WalletRepository(api, auth),
+          staff: StaffRepository(api, auth),
           onOpenSettings: () {},
           onSignOut: () async {},
         ),
@@ -325,6 +328,7 @@ void main() {
           dashboard: DashboardRepository(api, auth),
           logistics: LogisticsRepository(api, auth),
           wallet: WalletRepository(api, auth),
+          staff: StaffRepository(api, auth),
           onOpenSettings: () {},
           onSignOut: () async {},
         ),

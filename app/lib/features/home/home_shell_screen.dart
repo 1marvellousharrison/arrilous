@@ -6,6 +6,7 @@ import '../../core/state/catalog_repository.dart';
 import '../../core/state/customer_repository.dart';
 import '../../core/state/dashboard_repository.dart';
 import '../../core/state/logistics_repository.dart';
+import '../../core/state/staff_repository.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/state/wallet_repository.dart';
 import '../../core/theme/app_theme.dart';
@@ -15,6 +16,7 @@ import '../customers/customer_form_screen.dart';
 import '../customers/customers_screen.dart';
 import '../products/product_form_screen.dart';
 import '../products/products_screen.dart';
+import '../staff/staff_screen.dart';
 import '../transactions/new_transaction_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
 import '../transactions/transactions_screen.dart';
@@ -24,11 +26,16 @@ import '../logistics/notifications_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'dashboard_screen.dart';
 
-/// The authenticated shell for a business owner.
+/// The authenticated shell for a business account.
 ///
 /// Tabs are Home | Transactions | AI/Chats | Logistics | Profile. An owner
 /// without a business is held at setup rather than shown an empty app: every
 /// operational view needs a business behind it.
+///
+/// The same shell serves a staff member, restricted to their slice of it: they
+/// see only their own sales, may annotate but never move a sale, get a
+/// read-only catalog and add-only customers, and cannot reach the wallet,
+/// business details or staff management.
 class HomeShellScreen extends StatefulWidget {
   const HomeShellScreen({
     required this.user,
@@ -39,6 +46,7 @@ class HomeShellScreen extends StatefulWidget {
     required this.dashboard,
     required this.logistics,
     required this.wallet,
+    required this.staff,
     required this.onOpenSettings,
     required this.onSignOut,
     super.key,
@@ -52,6 +60,7 @@ class HomeShellScreen extends StatefulWidget {
   final DashboardRepository dashboard;
   final LogisticsRepository logistics;
   final WalletRepository wallet;
+  final StaffRepository staff;
   final VoidCallback onOpenSettings;
   final Future<void> Function() onSignOut;
 
@@ -61,6 +70,8 @@ class HomeShellScreen extends StatefulWidget {
 
 class _HomeShellScreenState extends State<HomeShellScreen> {
   int _index = 0;
+
+  bool get _isStaff => widget.user.role == 'staff';
 
   // Login or refresh is the only moment the incomplete-details prompt appears
   // on its own. Recording a sale asks again regardless of this flag, because
@@ -84,6 +95,10 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   /// comfortable. Once per launch, and never for an owner who has them.
   Future<void> _maybePromptForDetails() async {
     if (_promptedForDetails) return;
+    // Business contact and location are the owner's to fill in and only the
+    // owner may edit them, so a staff member is never nudged towards a form the
+    // server would refuse.
+    if (_isStaff) return;
     final business = widget.business;
     if (!business.isReady || business.needsSetup || !business.needsLogisticsDetails) {
       return;
@@ -124,6 +139,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   /// The gate before any sale: an owner missing these details is sent to
   /// business details instead of the sale form, and the sale waits.
   Future<bool> _ensureDetailsBeforeSale() async {
+    if (_isStaff) return true;
     if (!widget.business.needsLogisticsDetails) return true;
     _salePrompted = true;
     final open = await _promptForDetails();
@@ -178,11 +194,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           appBar: AppBar(
             title: Text(ownerName.isEmpty ? 'Biziness' : ownerName),
             actions: [
-              IconButton(
-                tooltip: 'Business details',
-                onPressed: _openBusinessDetails,
-                icon: const Icon(Icons.storefront_outlined),
-              ),
+              if (!_isStaff)
+                IconButton(
+                  tooltip: 'Business details',
+                  onPressed: _openBusinessDetails,
+                  icon: const Icon(Icons.storefront_outlined),
+                ),
               IconButton(
                 tooltip: 'Settings',
                 onPressed: widget.onOpenSettings,
@@ -255,6 +272,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onSeeAllTransactions: () => _onTab(1),
           onAddProduct: _addProduct,
           onAddCustomer: _addCustomer,
+          canAddProduct: !_isStaff,
         ),
       1 => TransactionsScreen(
           transactions: widget.transactions,
@@ -268,8 +286,10 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onProducts: _openProducts,
           onCustomers: _openCustomers,
           onWallet: _openWallet,
+          onStaff: _openStaff,
           business: widget.business,
           logistics: widget.logistics,
+          isStaff: _isStaff,
         ),
     };
   }
@@ -352,6 +372,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         builder: (_) => TransactionDetailScreen(
           transactions: widget.transactions,
           transactionId: transaction.id,
+          canChangeStatus: !_isStaff,
         ),
       ),
     );
@@ -378,13 +399,23 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       builder: (_) => ProductsScreen(
         catalog: widget.catalog,
         businessName: widget.business.business?.displayName ?? '',
+        readOnly: _isStaff,
       ),
     ),
   );
 
   Future<void> _openCustomers() => Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
-      builder: (_) => CustomersScreen(customers: widget.customers),
+      builder: (_) => CustomersScreen(
+        customers: widget.customers,
+        canEdit: !_isStaff,
+      ),
+    ),
+  );
+
+  Future<void> _openStaff() => Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => StaffScreen(staff: widget.staff),
     ),
   );
 }
@@ -412,16 +443,20 @@ class _ProfileScreen extends StatefulWidget {
     required this.onProducts,
     required this.onCustomers,
     required this.onWallet,
+    required this.onStaff,
     required this.business,
     required this.logistics,
+    required this.isStaff,
   });
 
   final VoidCallback onOpenSettings;
   final Future<void> Function() onProducts;
   final Future<void> Function() onCustomers;
   final Future<void> Function() onWallet;
+  final Future<void> Function() onStaff;
   final BusinessRepository business;
   final LogisticsRepository logistics;
+  final bool isStaff;
 
   @override
   State<_ProfileScreen> createState() => _ProfileScreenState();
@@ -466,7 +501,10 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           const SizedBox(height: AppSpacing.lg),
           ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
           ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
-          ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Wallet'), subtitle: const Text('Balance, funding and payouts'), onTap: widget.onWallet),
+          if (!widget.isStaff)
+            ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Wallet'), subtitle: const Text('Balance, funding and payouts'), onTap: widget.onWallet),
+          if (!widget.isStaff)
+            ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
           ListTile(
             leading: const Icon(Icons.notifications_none),
             title: const Text('Notifications'),

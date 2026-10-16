@@ -13,10 +13,18 @@ import '../../widgets/common.dart';
 /// then converted to kobo before it is sent. The converted value is shown under
 /// the field so the number stored is never a surprise.
 class ProductFormScreen extends StatefulWidget {
-  const ProductFormScreen({required this.catalog, this.product, super.key});
+  const ProductFormScreen({
+    required this.catalog,
+    this.product,
+    super.key,
+    this.readOnly = false,
+  });
 
   final CatalogRepository catalog;
   final Product? product;
+
+  /// Viewing only — a staff member can read a product but not edit or add one.
+  final bool readOnly;
 
   @override
   State<ProductFormScreen> createState() => _ProductFormScreenState();
@@ -75,7 +83,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final parsed = parseNairaToKobo(_price.text);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isEditing ? 'Edit product' : 'New product')),
+      appBar: AppBar(title: Text(widget.readOnly ? 'Product' : (_isEditing ? 'Edit product' : 'New product'))),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -88,6 +96,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               ],
               TextFormField(
                 controller: _name,
+                enabled: !widget.readOnly,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
                   labelText: 'Product name',
@@ -100,6 +109,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
                 controller: _description,
+                enabled: !widget.readOnly,
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Description (optional)',
@@ -113,6 +123,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _category,
+                      enabled: !widget.readOnly,
                       textCapitalization: TextCapitalization.words,
                       decoration: InputDecoration(labelText: 'Category'),
                     ),
@@ -121,6 +132,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _sku,
+                      enabled: !widget.readOnly,
                       textCapitalization: TextCapitalization.characters,
                       decoration: InputDecoration(
                         labelText: 'SKU',
@@ -133,6 +145,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
                 controller: _price,
+                enabled: !widget.readOnly,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
@@ -158,6 +171,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
                 controller: _stock,
+                enabled: !widget.readOnly,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
@@ -174,28 +188,30 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 },
               ),
               const SizedBox(height: AppSpacing.xl),
-              FilledButton(
-                onPressed: _submitting ? null : _save,
-                child: _submitting
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(_isEditing ? 'Save changes' : 'Add product'),
-              ),
-              if (_isEditing) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Archiving keeps this product in past transactions. Use the list to archive it.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
+              if (!widget.readOnly) ...[
+                FilledButton(
+                  onPressed: _submitting ? null : _save,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(_isEditing ? 'Save changes' : 'Add product'),
                 ),
+                if (_isEditing) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Archiving keeps this product in past transactions. Use the list to archive it.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),

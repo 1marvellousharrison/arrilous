@@ -28,6 +28,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onAddProduct,
     required this.onAddCustomer,
     super.key,
+    this.canAddProduct = true,
   });
 
   final DashboardRepository dashboard;
@@ -43,6 +44,10 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onSeeAllTransactions;
   final VoidCallback onAddProduct;
   final VoidCallback onAddCustomer;
+
+  /// A staff member can add customers but not products, so the quick action is
+  /// hidden rather than offered and refused.
+  final bool canAddProduct;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -480,14 +485,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onTap: widget.onAddCustomer,
           ),
         ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: _ActionButton(
-            icon: Icons.add_box_outlined,
-            label: 'Add product',
-            onTap: widget.onAddProduct,
+        if (widget.canAddProduct) ...[
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: _ActionButton(
+              icon: Icons.add_box_outlined,
+              label: 'Add product',
+              onTap: widget.onAddProduct,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

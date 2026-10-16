@@ -127,7 +127,12 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: Text(
                     current == null
                         ? 'Not signed in'
-                        : '${current.fullName}\n${current.email}',
+                        : [
+                            current.fullName,
+                            if (current.email.isNotEmpty) current.email,
+                            if (current.email.isEmpty && current.phone != null)
+                              current.phone!,
+                          ].join('\n'),
                   ),
                   isThreeLine: current != null,
                 ),
@@ -207,6 +212,7 @@ class SettingsScreen extends StatelessWidget {
         'logistics_partner' => 'Logistics',
         'rider' => 'Rider',
         'business' => 'Business',
+        'staff' => 'Staff',
         _ => 'Unknown',
       };
 }

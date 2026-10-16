@@ -14,6 +14,7 @@ class LoginScreen extends StatefulWidget {
     super.key,
     this.onForgotPassword,
     this.onUseCode,
+    this.onActivateStaff,
   });
 
   final AuthRepository auth;
@@ -21,6 +22,10 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback onCreateAccount;
   final ValueChanged<String>? onForgotPassword;
   final ValueChanged<String>? onUseCode;
+
+  /// Opens staff activation and, when it succeeds, returns the staff code so
+  /// the form can be filled with it ready to sign in.
+  final Future<String?> Function()? onActivateStaff;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -125,20 +130,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       textInputAction: TextInputAction.next,
                       autocorrect: false,
                       decoration: InputDecoration(
-                        labelText: 'Phone number or email',
-                        hintText: 'you@business.com',
+                        labelText: 'Phone number, email or staff code',
+                        hintText: 'you@business.com or ABC47-03',
                         prefixIcon: const Icon(Icons.alternate_email),
                         errorText: _identifierError,
                       ),
                       validator: (value) {
                         final text = (value ?? '').trim();
                         if (text.isEmpty) {
-                          return 'Enter your email or phone number.';
+                          return 'Enter your email, phone number or staff code.';
                         }
                         final looksLikeEmail = text.contains('@');
                         final looksLikePhone = RegExp(r'^\+?[0-9\s-]{7,}$').hasMatch(text);
-                        if (!looksLikeEmail && !looksLikePhone) {
-                          return 'Enter a valid email address or phone number.';
+                        // Staff sign in with the permanent code the owner gave
+                        // them, so the code has to pass the same gate as an
+                        // address rather than be refused before it reaches the
+                        // server.
+                        final looksLikeStaffCode =
+                            RegExp(r'^[A-Za-z]{3}[0-9]{2}-[0-9]{2}$').hasMatch(text);
+                        if (!looksLikeEmail && !looksLikePhone && !looksLikeStaffCode) {
+                          return 'Enter a valid email, phone number or staff code.';
                         }
                         return null;
                       },
@@ -267,6 +278,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                     ],
+                    if (widget.onActivateStaff != null) ...[
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _busy ? null : _activateStaff,
+                          icon: const Icon(Icons.badge_outlined, size: 18),
+                          label: const Text('Have a staff code? Activate it'),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                    ],
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -289,6 +310,22 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _activateStaff() async {
+    final code = await widget.onActivateStaff?.call();
+    if (!mounted || code == null || code.isEmpty) return;
+    setState(() {
+      _identifier.text = code;
+      _error = null;
+      _identifierError = null;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Account activated. Sign in with your new password.'),
       ),
     );
   }

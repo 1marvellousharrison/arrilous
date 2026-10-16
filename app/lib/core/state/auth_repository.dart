@@ -137,6 +137,29 @@ class AuthRepository extends ChangeNotifier {
     return _persist(AuthSession.fromJson(data as Map<String, dynamic>));
   }
 
+  /// Step 1 of staff activation: proves the code the owner handed over exists
+  /// and is still unclaimed. No session is created — the staff sets a password
+  /// next, then signs in like anyone else.
+  Future<StaffClaim> claimStaffCode(String staffCode) async {
+    final data = await _api.post(
+      '/staff/claim',
+      body: {'staff_code': staffCode.trim()},
+    ) as Map<String, dynamic>;
+    return StaffClaim.fromJson(data);
+  }
+
+  /// Step 2 of staff activation: sets the staff's own password. The owner never
+  /// sees or chooses it.
+  Future<void> activateStaff({
+    required String staffCode,
+    required String password,
+  }) async {
+    await _api.post(
+      '/staff/activate',
+      body: {'staff_code': staffCode.trim(), 'password': password},
+    );
+  }
+
   /// Asks the server for a one-time code. In development the API echoes the
   /// code as `dev_code`; the UI shows it so the flow is testable without an
   /// SMS provider.
@@ -257,6 +280,24 @@ class AuthRepository extends ChangeNotifier {
     await _store.write(jsonEncode(session.toJson()));
     return session;
   }
+}
+
+/// What a staff code resolves to before activation: who it belongs to and the
+/// business the staff would join.
+class StaffClaim {
+  const StaffClaim({required this.fullName, required this.businessName});
+
+  factory StaffClaim.fromJson(Map<String, dynamic> json) {
+    final staff = json['staff'] as Map<String, dynamic>? ?? const {};
+    final business = json['business'] as Map<String, dynamic>? ?? const {};
+    return StaffClaim(
+      fullName: staff['fullName'] as String? ?? '',
+      businessName: business['businessName'] as String? ?? '',
+    );
+  }
+
+  final String fullName;
+  final String businessName;
 }
 
 class OtpChallenge {

@@ -699,6 +699,41 @@ void main() {
         },
       );
     });
+
+    test('a note on its own is sent without any status change', () async {
+      await withRepo(
+        (request) async => request.method == 'PATCH'
+            ? json({'transaction': transactionJson()})
+            : json({'transactions': []}),
+        (transactions, _) async {
+          await transactions.loadDetail('txn-1');
+          await transactions.updateStatuses(const {}, note: 'Customer will pay tomorrow');
+
+          final patch = log.firstWhere((r) => r.method == 'PATCH');
+          final body = jsonDecode(patch.body) as Map<String, dynamic>;
+          expect(body['note'], 'Customer will pay tomorrow');
+          expect(body.containsKey('orderStatus'), isFalse);
+          expect(body.containsKey('paymentStatus'), isFalse);
+        },
+      );
+    });
+
+    test('nothing to change and no note makes no request at all', () async {
+      await withRepo(
+        (_) async => json({'transactions': []}),
+        (transactions, _) async {
+          await transactions.loadDetail('txn-1');
+          final before = log.where((r) => r.method == 'PATCH').length;
+          await transactions.updateStatuses(const {});
+
+          expect(
+            log.where((r) => r.method == 'PATCH').length,
+            before,
+            reason: 'an empty update is a no-op, not an empty PATCH',
+          );
+        },
+      );
+    });
   });
 
   group('DashboardRepository', () {
