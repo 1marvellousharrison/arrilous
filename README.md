@@ -1,4 +1,4 @@
-# Business Hub — Small Business Management App
+# biziness — Small Business Management App
 
 Mobile-first business operations app: **customer conversation → order → product
 availability → payment → delivery → delivery confirmation → completed

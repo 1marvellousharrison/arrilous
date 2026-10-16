@@ -36,19 +36,19 @@ final String apiBaseUrl = _apiBaseUrlOverride.isNotEmpty
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const BusinessHubApp());
+  runApp(const BizinessApp());
 }
 
-class BusinessHubApp extends StatefulWidget {
-  const BusinessHubApp({super.key, this.apiBaseUrlOverride});
+class BizinessApp extends StatefulWidget {
+  const BizinessApp({super.key, this.apiBaseUrlOverride});
 
   final String? apiBaseUrlOverride;
 
   @override
-  State<BusinessHubApp> createState() => _BusinessHubAppState();
+  State<BizinessApp> createState() => _BizinessAppState();
 }
 
-class _BusinessHubAppState extends State<BusinessHubApp> {
+class _BizinessAppState extends State<BizinessApp> {
   late final ThemeController _theme = ThemeController();
   late final ApiClient _api = ApiClient(
     baseUrl: widget.apiBaseUrlOverride ?? apiBaseUrl,
@@ -111,7 +111,7 @@ class _BusinessHubAppState extends State<BusinessHubApp> {
       listenable: _theme,
       builder: (context, _) {
         return MaterialApp(
-          title: 'Business Hub',
+          title: 'biziness',
           debugShowCheckedModeBanner: false,
           themeMode: _theme.mode,
           theme: buildLightTheme(),
