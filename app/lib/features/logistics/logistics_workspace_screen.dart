@@ -17,6 +17,18 @@ import '../wallet/wallet_screen.dart';
 import 'delivery_request_detail_screen.dart';
 import 'delivery_requests_list_screen.dart';
 
+/// When `hour:minute` next arrives relative to `now`: today while it is still
+/// ahead of the clock, the same time tomorrow once it has passed.
+///
+/// A closing time must always be in the future — the server refuses an expired
+/// one and the whole working day (and the night beyond it) has to be reachable,
+/// not just the hours left today.
+DateTime nextWorkUntil(DateTime now, int hour, [int minute = 0]) {
+  final today = DateTime(now.year, now.month, now.day);
+  final candidate = DateTime(today.year, today.month, today.day, hour, minute);
+  return candidate.isAfter(now) ? candidate : candidate.add(const Duration(days: 1));
+}
+
 /// Spec 42 and 43 — the two internal dashboards.
 ///
 /// An organization sees fleet, riders, coverage and pricing; a rider sees their
@@ -1110,26 +1122,23 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
   }
 
   /// The work-until chooser used when going active and when re-planning
-  /// mid-shift. Offered times run from 12 noon to 7pm; a custom picker covers
-  /// any other hour of the day. Times already behind "now" are disabled so the
-  /// server never receives an expired closing time.
+  /// mid-shift. Presets cover the whole clock, and any choice that is already
+  /// behind "now" rolls to the same time tomorrow, so a provider can always go
+  /// active — late at night included — and the closing time the server receives
+  /// is always in the future.
   Future<DateTime?> _askForCloseTime({
     required String title,
     required String confirmLabel,
     DateTime? current,
   }) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    const presets = [12, 13, 14, 15, 16, 17, 18, 19]; // 12pm – 7pm
+    final presets = List<int>.generate(24, (hour) => hour);
+
     late DateTime closing;
     if (current != null && current.isAfter(now)) {
       closing = current;
     } else {
-      final firstFuture = presets.firstWhere(
-        (hour) => today.add(Duration(hours: hour)).isAfter(now),
-        orElse: () => presets.last,
-      );
-      closing = today.add(Duration(hours: firstFuture));
+      closing = nextWorkUntil(now, now.hour == 23 ? 0 : now.hour + 1);
     }
     return showDialog<DateTime>(
       context: context,
@@ -1156,18 +1165,17 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
                     spacing: AppSpacing.sm,
                     runSpacing: AppSpacing.sm,
                     children: [
-                      for (final hour in presets)
-                        Builder(
-                          builder: (chipContext) {
-                            final candidate = today.add(Duration(hours: hour));
-                            final gone = !candidate.isAfter(now);
-                            return ChoiceChip(
-                              label: Text(TimeOfDay(hour: hour, minute: 0).format(chipContext)),
-                              selected: closing.isAtSameMomentAs(candidate),
-                              onSelected: gone ? null : (_) => setState(() => closing = candidate),
-                            );
-                          },
-                        ),
+                  for (final hour in presets)
+                    Builder(
+                      builder: (chipContext) {
+                        final candidate = nextWorkUntil(now, hour);
+                        return ChoiceChip(
+                          label: Text(TimeOfDay(hour: hour, minute: 0).format(chipContext)),
+                          selected: closing.isAtSameMomentAs(candidate),
+                          onSelected: (_) => setState(() => closing = candidate),
+                        );
+                      },
+                    ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
@@ -1178,16 +1186,9 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
                         initialTime: TimeOfDay(hour: closing.hour, minute: closing.minute),
                       );
                       if (picked == null) return;
-                      final candidate = today.add(Duration(hours: picked.hour, minutes: picked.minute));
-                      if (!candidate.isAfter(now)) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('That time has already passed today — pick a later hour.')),
-                          );
-                        }
-                        return;
-                      }
-                      setState(() => closing = candidate);
+                      // An hour already gone today reads as tomorrow, exactly as
+                      // the presets do, so the choice is never refused.
+                      setState(() => closing = nextWorkUntil(now, picked.hour, picked.minute));
                     },
                     icon: const Icon(Icons.schedule, size: 18),
                     label: const Text('Pick a different time…'),

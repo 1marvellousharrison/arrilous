@@ -1345,17 +1345,14 @@ void main() {
       await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Active')));
       await tester.pumpAndSettle();
 
-      // Preset work-until times run noon → 7pm. After 7pm local there is nothing
-      // left to choose today, so only nothing-to-pick nights skip the flow.
-      const presets = [12, 13, 14, 15, 16, 17, 18, 19];
+      // Presets cover the whole clock and every hour rolls to tomorrow once it
+      // is behind "now", so activation works at any time of day — including
+      // nights when nothing is left ahead today.
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final future = presets.where((hour) => today.add(Duration(hours: hour)).isAfter(now)).toList();
-      if (future.isEmpty) return;
-      final expectedActivationHour = future.first;
-      final replanHour = future.length > 1 ? future[1] : future.first;
+      final expectedActivationHour = (now.hour + 1) % 24;
+      final replanHour = (expectedActivationHour + 1) % 24;
 
-      // Going active asks for the exact time of day to work until (noon → 7pm).
+      // Going active asks for the exact time of day to work until.
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
       expect(find.text('Go active?'), findsOneWidget);
@@ -1394,6 +1391,33 @@ void main() {
       await tester.tap(find.text('-30 min'));
       await tester.pumpAndSettle();
       expect(lastExtend.body, contains('"minutes":-30'));
+    });
+  });
+
+  group('work-until choices are reachable at any hour of the night', () {
+    final night = DateTime(2026, 10, 15, 21, 30);
+
+    test('an hour already gone today rolls to tomorrow instead of being refused', () {
+      final morning = nextWorkUntil(night, 9);
+      expect(morning, DateTime(2026, 10, 16, 9), reason: '9am asked at 9:30pm means tomorrow');
+      expect(morning.isAfter(night), isTrue, reason: 'the server refuses a closing time in the past');
+
+      final stillAhead = nextWorkUntil(night, 23);
+      expect(stillAhead, DateTime(2026, 10, 15, 23), reason: '11pm asked at 9:30pm is still today');
+      expect(stillAhead.isAfter(night), isTrue);
+    });
+
+    test('every hour stays selectable once the working day has run out', () {
+      for (var hour = 0; hour < 24; hour++) {
+        expect(nextWorkUntil(night, hour).isAfter(night), isTrue, reason: 'hour $hour must never come out in the past');
+      }
+    });
+
+    test('going active defaults to the next whole hour, including across midnight', () {
+      DateTime defaultClose(DateTime now) => nextWorkUntil(now, now.hour == 23 ? 0 : now.hour + 1);
+      expect(defaultClose(night), DateTime(2026, 10, 15, 22));
+      expect(defaultClose(DateTime(2026, 10, 15, 23, 5)), DateTime(2026, 10, 16, 0));
+      expect(defaultClose(DateTime(2026, 10, 15, 0, 0)), DateTime(2026, 10, 15, 1));
     });
   });
 
