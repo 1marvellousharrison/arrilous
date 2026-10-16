@@ -11,7 +11,6 @@ import 'package:dee_app/features/home/dashboard_screen.dart';
 import 'package:dee_app/features/transactions/new_transaction_screen.dart';
 import 'package:dee_app/features/transactions/transaction_detail_screen.dart';
 import 'package:dee_app/features/transactions/transactions_screen.dart';
-import 'package:dee_app/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -324,10 +323,10 @@ void main() {
       expect(find.text('Retry'), findsOneWidget);
     });
 
-    /// The "Your business" space is an auto-advancing showcase: the shop's name
-    /// rides a ribbon, the logo sits on the canvas, and one product from each of
-    /// three categories is featured — rather than the terse detail rows it used
-    /// to carry.
+    /// The "Your business" space is an auto-advancing reel: it opens on the
+    /// shop's name on its ribbon, then walks every active product — one per
+    /// slide, with its price and stock — slipping the logo in between so the
+    /// products never run in a row.
     testWidgets('features the shop on an auto-advancing showcase slide', (tester) async {
       useTallSurface(tester);
       final repos = await signInOwner((request) async {
@@ -406,21 +405,36 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // The name rides the ribbon (uppercased) and the logo is on the canvas.
-      expect(find.text('ADA PROVISIONS'), findsOneWidget);
-      expect(find.byType(BusinessLogoAvatar), findsWidgets);
+      // It opens on the shop's name riding the ribbon, sector underneath.
       expect(find.byType(PageView), findsOneWidget, reason: 'the space is a slide');
+      expect(find.text('WELCOME TO'), findsOneWidget);
+      expect(find.text('ADA PROVISIONS'), findsOneWidget);
+      expect(find.text('GROCERIES'), findsOneWidget);
 
-      // One product from each of the three categories is featured.
+      // Then the first product gets its own slide, with price and stock.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
       expect(find.text('Rice 50kg'), findsOneWidget);
-      expect(find.text('Palm Oil'), findsOneWidget);
       expect(find.text('GRAINS'), findsOneWidget);
+      expect(find.text('4 in stock'), findsOneWidget);
+
+      // The second product follows on its own slide.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(find.text('Palm Oil'), findsOneWidget);
       expect(find.text('OILS'), findsOneWidget);
 
-      // The slide advances itself, so the page moves on without a tap.
-      await tester.pump(const Duration(seconds: 6));
+      // The logo is slipped in between the products, on a slide of its own.
+      await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
-      expect(find.byType(PageView), findsOneWidget);
+      expect(find.text('ADA PROVISIONS'), findsOneWidget);
+      expect(find.text('Palm Oil'), findsNothing);
+
+      // A product with nothing on the shelf says so.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(find.text('Detergent'), findsOneWidget);
+      expect(find.text('Out of stock'), findsOneWidget);
     });
   });
 

@@ -525,33 +525,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// Picks up to three products that belong to three different categories. When
-/// the catalog is too thin to find three categories it backfills with whatever
-/// else is active, so the slide is never empty.
-List<Product> _featuredProducts(List<Product> active) {
-  final byCategory = <String, List<Product>>{};
-  for (final product in active) {
-    final category = product.category?.trim() ?? '';
-    final key = category.isEmpty ? ' Other' : category.toLowerCase();
-    byCategory.putIfAbsent(key, () => <Product>[]).add(product);
-  }
+/// One entry in the showcase reel. A slide is either the shop's name, its logo,
+/// or a single product.
+enum _ShowcaseKind { name, logo, product }
 
-  final featured = <Product>[];
-  for (final group in byCategory.values) {
-    if (featured.length == 3) break;
-    featured.add(group.first);
-  }
-  for (final product in active) {
-    if (featured.length == 3) break;
-    if (!featured.contains(product)) featured.add(product);
-  }
-  return featured;
+class _ShowcaseSlide {
+  const _ShowcaseSlide.name()
+      : kind = _ShowcaseKind.name,
+        product = null;
+
+  const _ShowcaseSlide.logo()
+      : kind = _ShowcaseKind.logo,
+        product = null;
+
+  const _ShowcaseSlide.product(this.product) : kind = _ShowcaseKind.product;
+
+  final _ShowcaseKind kind;
+  final Product? product;
 }
 
-/// The "Your business" slide: a slightly taller card than the old business
-/// card, holding the logo, a textured ribbon carrying the shop's name, and up
-/// to three featured products scattered — never in a neat row — across the
-/// canvas. It advances itself so the showcase is alive without a tap.
+/// Lays out the reel: it opens on the shop's name, then walks every active
+/// product — one per slide — dropping the logo in after every couple of
+/// products so the products never run in a row. When the catalog is empty the
+/// reel is just the name and the logo.
+List<_ShowcaseSlide> _buildDeck(List<Product> products) {
+  final deck = <_ShowcaseSlide>[const _ShowcaseSlide.name()];
+  var sinceLogo = 0;
+  for (final product in products) {
+    deck.add(_ShowcaseSlide.product(product));
+    sinceLogo += 1;
+    if (sinceLogo >= 2) {
+      deck.add(const _ShowcaseSlide.logo());
+      sinceLogo = 0;
+    }
+  }
+  if (sinceLogo != 0 || products.isEmpty) {
+    deck.add(const _ShowcaseSlide.logo());
+  }
+  return deck;
+}
+
+/// The "Your business" slide: a slightly taller card that carries a self-running
+/// reel — the shop's name on a textured ribbon, then each active product on its
+/// own slide with its price and stock, with the logo cut in between so the
+/// products never run in a row.
 class _BusinessShowcase extends StatefulWidget {
   const _BusinessShowcase({
     required this.catalog,
@@ -574,22 +591,23 @@ class _BusinessShowcase extends StatefulWidget {
 }
 
 class _BusinessShowcaseState extends State<_BusinessShowcase> {
-  /// Enough pages to feel like a reel without being restless, and a pace slow
-  /// enough to read a product before it moves.
-  static const _pages = 3;
-  static const _interval = Duration(seconds: 5);
+  static const _interval = Duration(seconds: 4);
 
   final _controller = PageController();
   Timer? _timer;
   int _page = 0;
 
+  /// The reel currently on screen. Rebuilt on every frame from the catalog so
+  /// it tracks products being added or hidden while the user watches.
+  List<_ShowcaseSlide> _deck = const [];
+
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(_interval, (_) {
-      if (!mounted || !_controller.hasClients) return;
+      if (!mounted || !_controller.hasClients || _deck.length < 2) return;
       _controller.animateToPage(
-        (_page + 1) % _pages,
+        (_page + 1) % _deck.length,
         duration: const Duration(milliseconds: 650),
         curve: Curves.easeInOut,
       );
@@ -616,28 +634,25 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
           child: AnimatedBuilder(
             animation: widget.catalog,
             builder: (context, _) {
-              final featured = _featuredProducts(widget.catalog.activeProducts);
+              final deck = _buildDeck(widget.catalog.activeProducts);
+              _deck = deck;
+              if (_page >= deck.length) _page = 0;
               return Stack(
                 children: [
                   Positioned.fill(child: _ShowcaseBackground(theme: theme)),
                   Positioned.fill(
                     child: PageView.builder(
                       controller: _controller,
-                      itemCount: _pages,
+                      itemCount: deck.length,
                       onPageChanged: (page) => setState(() => _page = page),
-                      itemBuilder: (context, index) => _ShowcasePage(
-                        index: index,
-                        businessName: widget.businessName,
-                        logoUrl: widget.logoUrl,
-                        products: featured,
-                      ),
+                      itemBuilder: (context, index) => _slideFor(deck[index]),
                     ),
                   ),
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: 30,
-                    child: _dots(theme),
+                    child: _indicator(theme),
                   ),
                   Positioned(
                     left: 0,
@@ -652,6 +667,23 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
         ),
       ),
     );
+  }
+
+  Widget _slideFor(_ShowcaseSlide slide) {
+    switch (slide.kind) {
+      case _ShowcaseKind.name:
+        return _NameSlide(
+          name: widget.businessName,
+          category: widget.category,
+        );
+      case _ShowcaseKind.logo:
+        return _LogoSlide(
+          name: widget.businessName,
+          logoUrl: widget.logoUrl,
+        );
+      case _ShowcaseKind.product:
+        return _ProductSlide(product: slide.product!);
+    }
   }
 
   Widget _footer(ThemeData theme) {
@@ -686,11 +718,30 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
     );
   }
 
-  Widget _dots(ThemeData theme) {
+  Widget _indicator(ThemeData theme) {
+    final total = _deck.length;
+    if (total > 7) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+          child: Text(
+            '${_page + 1} / $total',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        for (var i = 0; i < _pages; i++)
+        for (var i = 0; i < total; i++)
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -708,34 +759,130 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
   }
 }
 
-/// One page of the showcase. The products are laid out at fixed but scattered
-/// spots and rotated per page, so they read as accents dotted around the name
-/// rather than a sequential 1-2-3 list.
-class _ShowcasePage extends StatelessWidget {
-  const _ShowcasePage({
-    required this.index,
-    required this.businessName,
-    required this.logoUrl,
-    required this.products,
-  });
+/// The opening slide: the shop's name on its textured ribbon, with the sector
+/// it trades in tucked underneath.
+class _NameSlide extends StatelessWidget {
+  const _NameSlide({required this.name, required this.category});
 
-  final int index;
-  final String businessName;
-  final String? logoUrl;
-  final List<Product> products;
-
-  /// Scatter spots (alignment) per product slot, shifted one along each page so
-  /// no two pages look alike and the order never matches the row order.
-  static const _spots = <List<Alignment>>[
-    [Alignment(0.80, -0.72), Alignment(-0.82, -0.18), Alignment(0.60, 0.58)],
-    [Alignment(-0.80, -0.58), Alignment(0.74, -0.22), Alignment(-0.46, 0.62)],
-    [Alignment(0.70, -0.62), Alignment(-0.70, 0.12), Alignment(0.52, 0.68)],
-  ];
+  final String name;
+  final String? category;
 
   @override
   Widget build(BuildContext context) {
-    final spots = _spots[index % _spots.length];
-    final showProducts = products.take(3).toList(growable: false);
+    final theme = Theme.of(context);
+    final sector = category?.trim() ?? '';
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.xxl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'WELCOME TO',
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 3,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _NameRibbon(name: name),
+            if (sector.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                sector.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A dedicated slide for the shop's logo so it gets room to breathe instead of
+/// sitting as a small stamp in the corner.
+class _LogoSlide extends StatelessWidget {
+  const _LogoSlide({required this.name, required this.logoUrl});
+
+  final String name;
+  final String? logoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.xxl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.orangeRed.withValues(alpha: 0.28),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: BusinessLogoAvatar(
+                logoUrl: logoUrl,
+                name: name,
+                size: 88,
+                radius: BorderRadius.circular(AppRadius.pill),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              name.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: 0.5,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A product's own slide: its picture on the left, then the name, its price and
+/// how much is left on the shelf.
+class _ProductSlide extends StatelessWidget {
+  const _ProductSlide({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final category = product.category?.trim() ?? '';
+    final inStock = product.stockQuantity > 0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -744,30 +891,161 @@ class _ShowcasePage extends StatelessWidget {
         AppSpacing.lg,
         AppSpacing.xxl,
       ),
-      child: Stack(
+      child: Row(
         children: [
-          Align(
-            alignment: Alignment.topLeft,
-            child: BusinessLogoAvatar(
-              logoUrl: logoUrl,
-              name: businessName,
-              size: 46,
-              radius: BorderRadius.circular(AppRadius.field),
+          _ProductArt(product: product, size: 104),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (category.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Text(
+                      category.toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  formatKobo(product.priceKobo),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Row(
+                  children: [
+                    Icon(
+                      inStock
+                          ? Icons.inventory_2_outlined
+                          : Icons.remove_shopping_cart_outlined,
+                      size: 14,
+                      color: inStock
+                          ? AppColors.success
+                          : theme.colorScheme.error,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      inStock
+                          ? '${product.stockQuantity} in stock'
+                          : 'Out of stock',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: inStock
+                            ? AppColors.success
+                            : theme.colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          Align(
-            alignment: const Alignment(-0.05, 0.02),
-            child: _NameRibbon(name: businessName),
-          ),
-          for (var slot = 0; slot < showProducts.length; slot++)
-            Align(
-              // Rotating the slot by the page keeps the products interleaved.
-              alignment: spots[(slot + index) % spots.length],
-              child: _ProductChip(product: showProducts[slot]),
-            ),
         ],
       ),
     );
+  }
+}
+
+/// The product's picture when it has one, otherwise a warm tile with its
+/// initial — so the slide still reads as "this product" while photos are rare.
+class _ProductArt extends StatelessWidget {
+  const _ProductArt({required this.product, required this.size});
+
+  final Product product;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fallback = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.orangeRed.withValues(alpha: 0.22),
+            AppColors.orangeRed.withValues(alpha: 0.10),
+          ],
+        ),
+      ),
+      child: Text(
+        _initial(product.name),
+        style: theme.textTheme.displaySmall?.copyWith(
+          fontWeight: FontWeight.w900,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+    );
+
+    return Container(
+      width: size,
+      height: size,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.field),
+        border: Border.all(color: AppColors.orangeRed.withValues(alpha: 0.22)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: _image(fallback),
+    );
+  }
+
+  Widget _image(Widget fallback) {
+    final url = product.imageUrl;
+    if (url == null || url.isEmpty) return fallback;
+    if (url.startsWith('data:')) {
+      final bytes = BusinessLogoAvatar.decode(url);
+      if (bytes == null) return fallback;
+      return Image.memory(bytes, width: size, height: size, fit: BoxFit.cover);
+    }
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback,
+    );
+  }
+
+  static String _initial(String name) {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
   }
 }
 
@@ -833,69 +1111,6 @@ class _NameRibbon extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// A small product card dotted around the slide: name, category and price.
-class _ProductChip extends StatelessWidget {
-  const _ProductChip({required this.product});
-
-  final Product product;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final category = product.category?.trim();
-    return Container(
-      width: 118,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.field),
-        border: Border.all(color: AppColors.orangeRed.withValues(alpha: 0.28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (category != null && category.isNotEmpty)
-            Text(
-              category.toUpperCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 9,
-                letterSpacing: 1.6,
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          const SizedBox(height: 4),
-          Text(
-            product.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, height: 1.15),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            formatKobo(product.priceKobo),
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
-            ),
-          ),
-        ],
       ),
     );
   }
