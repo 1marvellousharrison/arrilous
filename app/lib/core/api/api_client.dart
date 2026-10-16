@@ -127,12 +127,23 @@ class AuthSession {
 /// Low-level HTTP wrapper. Knows nothing about auth beyond attaching a bearer
 /// token; token refresh lives in AuthRepository.
 class ApiClient {
-  ApiClient({required this.baseUrl, http.Client? client, this.timeout = const Duration(seconds: 15)})
-      : _client = client ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    http.Client? client,
+    this.timeout = const Duration(seconds: 15),
+    this.onUnauthorized,
+  }) : _client = client ?? http.Client();
 
   final String baseUrl;
   final Duration timeout;
   final http.Client _client;
+
+  /// Called when an authenticated request (one carrying a bearer token) is
+  /// refused with a 401, i.e. the session is no longer valid. The app uses this
+  /// to sign the user out and drop them back on the login screen instead of
+  /// leaving them stuck on an error. Sign-in and refresh calls carry no token,
+  /// so a wrong password never triggers it.
+  final void Function()? onUnauthorized;
 
   Future<dynamic> get(String path, {String? token}) =>
       _send('GET', path, token: token);
@@ -215,6 +226,13 @@ class ApiClient {
         );
       }
       return decoded;
+    }
+
+    // A 401 on a request that carried a token means the session has expired or
+    // been revoked. Alert the app before the error propagates so it can sign
+    // out; the request still throws so the caller sees the failure.
+    if (response.statusCode == 401 && token != null && token.isNotEmpty) {
+      onUnauthorized?.call();
     }
 
     if (decoded is Map<String, dynamic> && decoded['error'] is Map<String, dynamic>) {

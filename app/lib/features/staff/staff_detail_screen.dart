@@ -76,15 +76,12 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
       );
       if (!mounted) return;
       setState(() => _member = updated);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            updated.isDisabled
-                ? '${updated.fullName} is now disabled.'
-                : '${updated.fullName} can sign in again.',
-          ),
-        ),
-      );
+      final message = updated.isDisabled
+          ? '${updated.fullName} is now disabled.'
+          : updated.isInvited
+              ? '${updated.fullName}\'s code can be activated again.'
+              : '${updated.fullName} can sign in again.';
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } on ApiException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
     } on NetworkException catch (error) {
@@ -200,7 +197,11 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
                 _member.isDisabled ? Icons.play_circle_outline : Icons.block,
                 size: 18,
               ),
-              label: Text(_member.isDisabled ? 'Enable staff' : 'Disable staff'),
+              label: Text(
+                _member.isDisabled
+                    ? (_member.activatedAt == null ? 'Restore code' : 'Enable staff')
+                    : 'Disable staff',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor:
                     _member.isDisabled ? AppColors.success : AppColors.danger,

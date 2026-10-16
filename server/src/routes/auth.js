@@ -60,10 +60,15 @@ export function publicUser(row) {
  *   * staff code — resolved through staff_members, and only while the link is
  *     active, so an invited or disabled staff can never sign in;
  *   * phone — the fallback, matched in E.164 form.
+ *
+ * Staff are deliberately excluded from the email and phone branches: their
+ * login is the permanent code they were issued, and only that path checks the
+ * staff_members status. Without this, a disabled or not-yet-activated staff who
+ * was given a phone could slip in through the phone branch.
  */
 async function findUserByIdentifier(identifier) {
   if (identifier.includes('@')) {
-    return queryOne('SELECT * FROM users WHERE email = ?', identifier);
+    return queryOne("SELECT * FROM users WHERE email = ? AND role != 'staff'", identifier);
   }
   if (STAFF_CODE_PATTERN.test(identifier)) {
     return queryOne(
@@ -73,7 +78,7 @@ async function findUserByIdentifier(identifier) {
       identifier
     );
   }
-  return queryOne('SELECT * FROM users WHERE phone = ?', identifier);
+  return queryOne("SELECT * FROM users WHERE phone = ? AND role != 'staff'", identifier);
 }
 
 /** Creates an opaque refresh token; only its SHA-256 hash is persisted. */

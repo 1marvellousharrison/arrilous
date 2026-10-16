@@ -60,6 +60,7 @@ void main() {
     String code = 'ABC47-03',
     String status = 'invited',
     int sales = 0,
+    bool? activated,
   }) =>
       {
         'id': id,
@@ -69,7 +70,9 @@ void main() {
         'phone': null,
         'staffCode': code,
         'status': status,
-        'activatedAt': status == 'active' ? '2026-01-02T00:00:00.000Z' : null,
+        'activatedAt': (activated ?? status == 'active')
+            ? '2026-01-02T00:00:00.000Z'
+            : null,
         'createdAt': '2026-01-01T00:00:00.000Z',
         'updatedAt': '2026-01-01T00:00:00.000Z',
         'salesCount': sales,
@@ -416,7 +419,7 @@ void main() {
       final (_, staff) = await signedInStaff((request) async {
         if (request.url.path.endsWith('/auth/login')) return json(sessionBody());
         if (request.method == 'PATCH') {
-          return json({'staff': staffJson(status: 'disabled', sales: 1)});
+          return json({'staff': staffJson(status: 'disabled', sales: 1, activated: true)});
         }
         if (request.url.path.endsWith('/transactions')) {
           return json({'transactions': [transactionJson()]});

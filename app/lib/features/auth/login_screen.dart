@@ -44,6 +44,26 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _passwordError;
 
   @override
+  void initState() {
+    super.initState();
+    _prefillRemembered();
+  }
+
+  /// "Remember me" is on by default, so the last identifier is waiting in the
+  /// field and the user only has to type a password.
+  Future<void> _prefillRemembered() async {
+    final remembered = await widget.auth.rememberedIdentifier();
+    if (!mounted || remembered == null || remembered.isEmpty) return;
+    if (_identifier.text.isNotEmpty) return;
+    setState(() => _identifier.text = remembered);
+  }
+
+  void _setRememberMe(bool value) {
+    if (_busy) return;
+    setState(() => _rememberMe = value);
+  }
+
+  @override
   void dispose() {
     _identifier.dispose();
     _password.dispose();
@@ -61,10 +81,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _busy = true);
     try {
+      final identifier = _identifier.text.trim();
       final session = await widget.auth.signIn(
-        identifier: _identifier.text.trim(),
+        identifier: identifier,
         password: _password.text,
       );
+      await widget.auth.rememberIdentifier(_rememberMe ? identifier : null);
       if (!mounted) return;
       widget.onSignedIn(session.user);
     } on ApiException catch (error) {
@@ -182,26 +204,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: Checkbox(
-                                  value: _rememberMe,
-                                  onChanged: _busy
-                                      ? null
-                                      : (value) => setState(
-                                            () => _rememberMe = value ?? false,
-                                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(AppRadius.field),
+                            onTap: () => _setRememberMe(!_rememberMe),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: Checkbox(
+                                    value: _rememberMe,
+                                    onChanged: _busy
+                                        ? null
+                                        : (value) => _setRememberMe(value ?? false),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Text(
-                                'Remember me',
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            ],
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'Remember me',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         TextButton(
@@ -264,20 +288,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           : () => _showNotAvailable('Apple sign-in'),
                     ),
                     const SizedBox(height: AppSpacing.xl),
-                    if (widget.onUseCode != null) ...[
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: _busy
-                              ? null
-                              : () => widget.onUseCode?.call(
-                                    _identifier.text.trim(),
-                                  ),
-                          icon: const Icon(Icons.sms_outlined, size: 18),
-                          label: const Text('Sign in with a code instead'),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                    ],
                     if (widget.onActivateStaff != null) ...[
                       Center(
                         child: TextButton.icon(
@@ -288,8 +298,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                     ],
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           "Don't have an account?",

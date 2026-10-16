@@ -61,10 +61,27 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
   /// the fleet, riders, coverage and pricing.
   int _tab = 0;
 
+  /// The workspace refreshes itself so a rider never has to hunt for a refresh
+  /// button: new requests, assignments and availability changes land within a
+  /// few seconds. Pull-to-refresh on each page still works for an immediate
+  /// update.
+  static const Duration _refreshEvery = Duration(seconds: 12);
+  Timer? _autoRefresh;
+
   @override
   void initState() {
     super.initState();
     widget.logistics.load();
+    _autoRefresh = Timer.periodic(_refreshEvery, (_) {
+      if (!mounted) return;
+      widget.logistics.load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefresh?.cancel();
+    super.dispose();
   }
 
   @override
@@ -81,7 +98,6 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
               // Before the profile exists there is nothing to refresh, no status
               // to show and no wallet to open, so setup shows only settings.
               if (profile != null) ...[
-                IconButton(tooltip: 'Refresh', onPressed: repository.load, icon: const Icon(Icons.refresh)),
                 _statusIndicator(profile),
                 if (widget.wallet != null)
                   IconButton(

@@ -82,6 +82,24 @@ void main() {
     });
   });
 
+  group('remembered identifier', () {
+    test('remembers and reads back the identifier for the next sign-in', () async {
+      final repo = buildRepo((_) async => json(sessionBody));
+
+      expect(await repo.rememberedIdentifier(), isNull);
+      await repo.rememberIdentifier('ada@example.com');
+      expect(await repo.rememberedIdentifier(), 'ada@example.com');
+    });
+
+    test('forgets the identifier when asked not to remember it', () async {
+      final repo = buildRepo((_) async => json(sessionBody));
+
+      await repo.rememberIdentifier('ada@example.com');
+      await repo.rememberIdentifier(null);
+      expect(await repo.rememberedIdentifier(), isNull);
+    });
+  });
+
   group('sign up', () {
     test('sends the chosen account type and no phone number', () async {
       final repo = buildRepo((_) async => json(sessionBody, status: 201));
@@ -150,6 +168,42 @@ void main() {
         repo.signIn(identifier: 'ada@example.com', password: 'x'),
         throwsA(isA<NetworkException>()),
       );
+    });
+  });
+
+  group('session expiry', () {
+    http.Response unauthorized(String message) => json({
+          'error': {'code': 'unauthorized', 'message': message}
+        }, status: 401);
+
+    test('flags a 401 on an authenticated request so the app can sign out', () async {
+      var expired = 0;
+      final api = ApiClient(
+        baseUrl: base,
+        onUnauthorized: () => expired++,
+        client: MockClient((_) async => unauthorized('Access token expired.')),
+      );
+
+      await expectLater(
+        api.get('/business', token: 'spent-token'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(expired, 1);
+    });
+
+    test('a wrong password on login is not treated as session expiry', () async {
+      var expired = 0;
+      final api = ApiClient(
+        baseUrl: base,
+        onUnauthorized: () => expired++,
+        client: MockClient((_) async => unauthorized('Incorrect password.')),
+      );
+
+      await expectLater(
+        api.post('/auth/login', body: {'identifier': 'a@b.com', 'password': 'nope'}),
+        throwsA(isA<ApiException>()),
+      );
+      expect(expired, 0, reason: 'login carries no token, so it is not an expired session');
     });
   });
 

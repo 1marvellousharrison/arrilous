@@ -192,9 +192,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(ownerName.isEmpty ? 'Biziness' : ownerName),
+            // The Profile tab is the shop's own page and already leads with its
+            // identity card, so the bar drops the business name and the
+            // business-details shortcut there and keeps only settings.
+            title: _index == 4 ? null : Text(ownerName.isEmpty ? 'Biziness' : ownerName),
             actions: [
-              if (!_isStaff)
+              if (!_isStaff && _index != 4)
                 IconButton(
                   tooltip: 'Business details',
                   onPressed: _openBusinessDetails,

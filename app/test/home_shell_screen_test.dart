@@ -343,8 +343,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // The shop's own details ride on the banner, coordinates left off. The
-    // name shows twice: once in the shell's app bar, once on the banner.
-    expect(find.text('Ada Provisions'), findsNWidgets(2), reason: 'the business name heads the banner');
+    // name shows once: the profile tab's bar drops it and the banner carries it.
+    expect(find.text('Ada Provisions'), findsOneWidget, reason: 'the business name heads the banner');
     expect(find.text('Groceries'), findsOneWidget, reason: 'the category is shown as a tag');
     expect(find.text('+2348012345678'), findsOneWidget, reason: 'the contact number is shown');
     expect(find.text('12 Allen Avenue, Allen Hill, Ikeja, Lagos, Nigeria'), findsOneWidget, reason: 'the location is shown as a readable line');
@@ -408,8 +408,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // App bar and banner both carry the capitalised name, never the raw one.
-    expect(find.text('Ada provisions'), findsNWidgets(2));
+    // The banner carries the capitalised name, never the raw one; the profile
+    // tab's bar no longer repeats it.
+    expect(find.text('Ada provisions'), findsOneWidget);
     expect(find.text('ada provisions'), findsNothing);
     expect(find.byType(BusinessLogoAvatar), findsWidgets);
   });

@@ -54,6 +54,7 @@ class _BizinessAppState extends State<BizinessApp> {
   late final ThemeController _theme = ThemeController();
   late final ApiClient _api = ApiClient(
     baseUrl: widget.apiBaseUrlOverride ?? apiBaseUrl,
+    onUnauthorized: _handleSessionExpired,
   );
   late final AuthRepository _auth = AuthRepository(_api);
 
@@ -148,6 +149,16 @@ class _BizinessAppState extends State<BizinessApp> {
     _logistics.requests = const [];
     _wallet.reset();
     _staff.reset();
+  }
+
+  /// The session behind a spent or revoked access token is finished: sign the
+  /// user out and return to login rather than leaving them on an error screen
+  /// with nothing to do but log out by hand. Idempotent, so the burst of 401s
+  /// from several in-flight requests only signs out once.
+  void _handleSessionExpired() {
+    if (!_auth.isSignedIn) return;
+    _auth.clear();
+    _clearScopedState();
   }
 }
 

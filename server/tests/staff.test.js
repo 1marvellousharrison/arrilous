@@ -15,10 +15,10 @@ const STAFF_PASSWORD = 'Str0ngPass!23';
 const STAFF_CODE = /^[A-Z]{3}[0-9]{2}-[0-9]{2}$/;
 const BUSINESS_CODE = /^[A-Z]{3}[0-9]{2}$/;
 
-async function addStaff(owner, fullName = 'Amina Staff') {
+async function addStaff(owner, fullName = 'Amina Staff', phone = null) {
   const res = await api('POST', '/staff', {
     token: owner.token,
-    body: { full_name: fullName },
+    body: { full_name: fullName, ...(phone ? { phone } : {}) },
   });
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return res.body.staff;
@@ -394,6 +394,54 @@ describe('staff accounts — disabling', () => {
 
     const session = await loginStaff(staff.staff.staffCode);
     assert.equal(session.user.role, 'staff');
+  });
+
+  test('the owner cannot activate a code the staff has not activated themselves', async () => {
+    const owner = await createBusinessOwner('Invite Only Store');
+    const staff = await addStaff(owner, 'Never Activated');
+    assert.equal(staff.status, 'invited');
+
+    // Asking the API to make a fresh code active does not: only the staff's own
+    // activation (claim + set password) can.
+    const promoted = await api('PATCH', `/staff/${staff.id}`, {
+      token: owner.token,
+      body: { status: 'active' },
+    });
+    assert.equal(promoted.status, 200, JSON.stringify(promoted.body));
+    assert.equal(promoted.body.staff.status, 'invited');
+
+    // Disabling and re-enabling a never-activated code restores "invited"; it
+    // still does not activate anyone.
+    await api('PATCH', `/staff/${staff.id}`, { token: owner.token, body: { status: 'disabled' } });
+    const restored = await api('PATCH', `/staff/${staff.id}`, {
+      token: owner.token,
+      body: { status: 'active' },
+    });
+    assert.equal(restored.body.staff.status, 'invited');
+
+    // Still locked out until they set their own password.
+    const lockedOut = await api('POST', '/auth/login', {
+      body: { identifier: staff.staffCode, password: STAFF_PASSWORD },
+    });
+    assert.equal(lockedOut.status, 401);
+
+    // And the code still activates normally afterwards.
+    await activateStaff(staff.staffCode);
+    const session = await loginStaff(staff.staffCode);
+    assert.equal(session.user.role, 'staff');
+  });
+
+  test('a staff cannot sign in with a phone number, only their code', async () => {
+    const owner = await createBusinessOwner('Phone Bypass Store');
+    const staff = await addStaff(owner, 'Phone Staff', '+2348031234567');
+
+    // A phone on file does not resolve a staff: the phone branch excludes the
+    // staff role, so the code is the only way in. That matters most while the
+    // code is still unactivated, when the account would otherwise look active.
+    const viaPhone = await api('POST', '/auth/login', {
+      body: { identifier: '+2348031234567', password: STAFF_PASSWORD },
+    });
+    assert.equal(viaPhone.status, 401);
   });
 
   test('one owner cannot manage another business\'s staff', async () => {

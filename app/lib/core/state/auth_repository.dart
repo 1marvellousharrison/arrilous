@@ -77,6 +77,39 @@ class AuthRepository extends ChangeNotifier {
   bool get isSignedIn => _session != null;
   String? get currentUserId => _session?.user.id;
 
+  /// Where "Remember me" keeps the last identifier used to sign in, so the
+  /// login form can prefill it and the user only types a password next time.
+  /// SharedPreferences (not secure storage) is enough: it is an email, phone
+  /// or staff code the user already knows, never a credential.
+  static const String rememberedIdentifierKey = 'dee.auth.identifier';
+
+  /// The identifier to prefill the login form with, or null when the user has
+  /// never chosen to be remembered.
+  Future<String?> rememberedIdentifier() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(rememberedIdentifierKey);
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Remembers (or forgets, when [identifier] is null/empty) the identifier for
+  /// the next sign-in.
+  Future<void> rememberIdentifier(String? identifier) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final trimmed = identifier?.trim() ?? '';
+      if (trimmed.isEmpty) {
+        await prefs.remove(rememberedIdentifierKey);
+      } else {
+        await prefs.setString(rememberedIdentifierKey, trimmed);
+      }
+    } on Object {
+      // Remembering is a convenience; never let it break sign-in.
+    }
+  }
+
   /// Restores a persisted session on launch. Returns true when the stored
   /// session is still usable.
   Future<bool> restore() async {

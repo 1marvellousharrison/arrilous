@@ -213,14 +213,22 @@ staffRouter.patch('/:id', requireAuth, requireBusiness, requireOwner, async (req
     }
 
     if (body.status !== undefined) {
+      // Only the staff's own activation (claim + set password) can make them
+      // active. If the owner re-enables a code that was never activated, it
+      // returns to "invited" — usable again, but still waiting on the staff,
+      // never silently promoted to active.
+      const status =
+        body.status === 'active' && existing.activated_at == null
+          ? 'invited'
+          : body.status;
       await run(
         'UPDATE staff_members SET status = ?, updated_at = ? WHERE id = ?',
-        body.status,
+        status,
         now,
         existing.id
       );
       // Disabling must end live sessions, not just block the next login.
-      if (body.status === 'disabled') {
+      if (status === 'disabled') {
         await run(
           'UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL',
           now,
