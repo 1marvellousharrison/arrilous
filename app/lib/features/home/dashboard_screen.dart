@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/state/business_repository.dart';
@@ -58,6 +60,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     if (!widget.dashboard.loaded) widget.dashboard.load();
+    // The showcase slide borrows the catalog to feature a product from each
+    // category, so it is loaded here too — a failure leaves the slide quiet
+    // rather than blocking the dashboard.
+    if (!widget.catalog.loaded) widget.catalog.load();
   }
 
   @override
@@ -92,17 +98,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: AppSpacing.sm),
               _recent(repository, summary),
               const SizedBox(height: AppSpacing.xl),
-              _sectionLabel('New transaction'),
+              // The shop's own showcase sits where New transaction used to, so
+              // the business is front and centre before the entry options. Its
+              // position was swapped with New transaction, which now closes the
+              // page.
+              _sectionLabel('Your business'),
               const SizedBox(height: AppSpacing.sm),
-              _entryOptions(),
+              _businessShowcase(products, customers),
               const SizedBox(height: AppSpacing.xl),
               _sectionLabel('Quick actions'),
               const SizedBox(height: AppSpacing.sm),
               _quickActions(),
               const SizedBox(height: AppSpacing.xl),
-              _sectionLabel('Your business'),
+              _sectionLabel('New transaction'),
               const SizedBox(height: AppSpacing.sm),
-              _businessCard(products, customers),
+              _entryOptions(),
             ],
           ),
         );
@@ -499,54 +509,479 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _businessCard(int products, int customers) {
-    final theme = Theme.of(context);
-    final profile = widget.business.business;
-    final location = profile?.location;
+  /// The auto-advancing showcase that replaced the plain business card. It
+  /// reads the catalog itself so the featured products appear as soon as the
+  /// catalog lands, without the dashboard having to reload.
+  Widget _businessShowcase(int products, int customers) {
+    final business = widget.business.business;
+    return _BusinessShowcase(
+      catalog: widget.catalog,
+      businessName: business?.displayName ?? 'Your business',
+      logoUrl: business?.logoUrl,
+      category: business?.businessCategory,
+      locationLine: business?.location?.oneLine ?? 'Location not set yet',
+      catalogLine: '$products products • $customers customers',
+    );
+  }
+}
 
+/// Picks up to three products that belong to three different categories. When
+/// the catalog is too thin to find three categories it backfills with whatever
+/// else is active, so the slide is never empty.
+List<Product> _featuredProducts(List<Product> active) {
+  final byCategory = <String, List<Product>>{};
+  for (final product in active) {
+    final category = product.category?.trim() ?? '';
+    final key = category.isEmpty ? ' Other' : category.toLowerCase();
+    byCategory.putIfAbsent(key, () => <Product>[]).add(product);
+  }
+
+  final featured = <Product>[];
+  for (final group in byCategory.values) {
+    if (featured.length == 3) break;
+    featured.add(group.first);
+  }
+  for (final product in active) {
+    if (featured.length == 3) break;
+    if (!featured.contains(product)) featured.add(product);
+  }
+  return featured;
+}
+
+/// The "Your business" slide: a slightly taller card than the old business
+/// card, holding the logo, a textured ribbon carrying the shop's name, and up
+/// to three featured products scattered — never in a neat row — across the
+/// canvas. It advances itself so the showcase is alive without a tap.
+class _BusinessShowcase extends StatefulWidget {
+  const _BusinessShowcase({
+    required this.catalog,
+    required this.businessName,
+    required this.logoUrl,
+    required this.category,
+    required this.locationLine,
+    required this.catalogLine,
+  });
+
+  final CatalogRepository catalog;
+  final String businessName;
+  final String? logoUrl;
+  final String? category;
+  final String locationLine;
+  final String catalogLine;
+
+  @override
+  State<_BusinessShowcase> createState() => _BusinessShowcaseState();
+}
+
+class _BusinessShowcaseState extends State<_BusinessShowcase> {
+  /// Enough pages to feel like a reel without being restless, and a pace slow
+  /// enough to read a product before it moves.
+  static const _pages = 3;
+  static const _interval = Duration(seconds: 5);
+
+  final _controller = PageController();
+  Timer? _timer;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_interval, (_) {
+      if (!mounted || !_controller.hasClients) return;
+      _controller.animateToPage(
+        (_page + 1) % _pages,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.storefront, size: 20),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  (profile?.displayName ?? '').isEmpty
-                      ? 'Your business'
-                      : profile!.displayName,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: SizedBox(
+          // A touch taller than the old card, as asked.
+          height: 224,
+          child: AnimatedBuilder(
+            animation: widget.catalog,
+            builder: (context, _) {
+              final featured = _featuredProducts(widget.catalog.activeProducts);
+              return Stack(
+                children: [
+                  Positioned.fill(child: _ShowcaseBackground(theme: theme)),
+                  Positioned.fill(
+                    child: PageView.builder(
+                      controller: _controller,
+                      itemCount: _pages,
+                      onPageChanged: (page) => setState(() => _page = page),
+                      itemBuilder: (context, index) => _ShowcasePage(
+                        index: index,
+                        businessName: widget.businessName,
+                        logoUrl: widget.logoUrl,
+                        products: featured,
+                      ),
+                    ),
                   ),
-                ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 30,
+                    child: _dots(theme),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _footer(theme),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _footer(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 7),
+      color: Colors.white.withValues(alpha: 0.62),
+      child: Row(
+        children: [
+          Icon(Icons.place_outlined, size: 13, color: theme.colorScheme.primary),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              widget.locationLine,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (profile?.businessCategory != null)
-            _DetailRow(label: 'Category', value: profile!.businessCategory!),
-          if (profile?.phone != null)
-            _DetailRow(label: 'Phone', value: profile!.phone!),
-          _DetailRow(
-            label: 'Location',
-            value: location?.oneLine ?? 'Not set yet',
-          ),
-          if (location?.latitude != null && location?.longitude != null)
-            _DetailRow(
-              label: 'Coordinates',
-              value:
-                  '${location!.latitude!.toStringAsFixed(4)}, ${location.longitude!.toStringAsFixed(4)}',
             ),
-          _DetailRow(
-            label: 'Catalog',
-            value: '$products products • $customers customers',
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            widget.catalogLine,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
         ],
       ),
     );
   }
+
+  Widget _dots(ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < _pages; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: i == _page ? 18 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: i == _page
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One page of the showcase. The products are laid out at fixed but scattered
+/// spots and rotated per page, so they read as accents dotted around the name
+/// rather than a sequential 1-2-3 list.
+class _ShowcasePage extends StatelessWidget {
+  const _ShowcasePage({
+    required this.index,
+    required this.businessName,
+    required this.logoUrl,
+    required this.products,
+  });
+
+  final int index;
+  final String businessName;
+  final String? logoUrl;
+  final List<Product> products;
+
+  /// Scatter spots (alignment) per product slot, shifted one along each page so
+  /// no two pages look alike and the order never matches the row order.
+  static const _spots = <List<Alignment>>[
+    [Alignment(0.80, -0.72), Alignment(-0.82, -0.18), Alignment(0.60, 0.58)],
+    [Alignment(-0.80, -0.58), Alignment(0.74, -0.22), Alignment(-0.46, 0.62)],
+    [Alignment(0.70, -0.62), Alignment(-0.70, 0.12), Alignment(0.52, 0.68)],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final spots = _spots[index % _spots.length];
+    final showProducts = products.take(3).toList(growable: false);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxl,
+      ),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: BusinessLogoAvatar(
+              logoUrl: logoUrl,
+              name: businessName,
+              size: 46,
+              radius: BorderRadius.circular(AppRadius.field),
+            ),
+          ),
+          Align(
+            alignment: const Alignment(-0.05, 0.02),
+            child: _NameRibbon(name: businessName),
+          ),
+          for (var slot = 0; slot < showProducts.length; slot++)
+            Align(
+              // Rotating the slot by the page keeps the products interleaved.
+              alignment: spots[(slot + index) % spots.length],
+              child: _ProductChip(product: showProducts[slot]),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The shop's name on a textured, angled ribbon — the "designed" moment of the
+/// slide. A faint diagonal pattern sits behind the letters and a warm shadow
+/// lifts the ribbon off the canvas.
+class _NameRibbon extends StatelessWidget {
+  const _NameRibbon({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: -0.04,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 220),
+        clipBehavior: Clip.antiAlias,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.orangeRedLight,
+              AppColors.orangeRed,
+              AppColors.orangeRedDark,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.orangeRed.withValues(alpha: 0.38),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _DiagonalPatternPainter(
+                  Colors.white.withValues(alpha: 0.16),
+                  gap: 10,
+                ),
+              ),
+            ),
+            Text(
+              name.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                fontSize: 20,
+                letterSpacing: 1.4,
+                shadows: [
+                  Shadow(color: Color(0x66000000), blurRadius: 6, offset: Offset(0, 2)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A small product card dotted around the slide: name, category and price.
+class _ProductChip extends StatelessWidget {
+  const _ProductChip({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final category = product.category?.trim();
+    return Container(
+      width: 118,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.field),
+        border: Border.all(color: AppColors.orangeRed.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (category != null && category.isNotEmpty)
+            Text(
+              category.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9,
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            product.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, height: 1.15),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            formatKobo(product.priceKobo),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The slide canvas: a soft warm gradient with two colour orbs and a faint
+/// diagonal pattern, so the ribbon and chips have something to sit on.
+class _ShowcaseBackground extends StatelessWidget {
+  const _ShowcaseBackground({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF1EA), Color(0xFFFFE0D1)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -30,
+            top: -40,
+            child: _Orb(color: AppColors.orangeRedLight.withValues(alpha: 0.28), size: 150),
+          ),
+          Positioned(
+            left: -40,
+            bottom: -60,
+            child: _Orb(color: AppColors.info.withValues(alpha: 0.12), size: 140),
+          ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _DiagonalPatternPainter(
+                AppColors.orangeRed.withValues(alpha: 0.05),
+                gap: 22,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Orb extends StatelessWidget {
+  const _Orb({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+/// Paints repeating diagonal stripes — the "background texture" echoed on both
+/// the canvas and the name ribbon.
+class _DiagonalPatternPainter extends CustomPainter {
+  const _DiagonalPatternPainter(this.color, {this.gap = 12});
+
+  final Color color;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.4;
+    // A 45° pattern: walk the diagonal range and draw across each stripe.
+    for (double x = -size.height; x < size.width; x += gap) {
+      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DiagonalPatternPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.gap != gap;
 }
 
 class _MiniStat extends StatelessWidget {
@@ -734,41 +1169,6 @@ class _ActionButton extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(52),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
       ),
     );
   }

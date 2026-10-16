@@ -11,6 +11,7 @@ import 'package:dee_app/features/home/dashboard_screen.dart';
 import 'package:dee_app/features/transactions/new_transaction_screen.dart';
 import 'package:dee_app/features/transactions/transaction_detail_screen.dart';
 import 'package:dee_app/features/transactions/transactions_screen.dart';
+import 'package:dee_app/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -321,6 +322,105 @@ void main() {
 
       expect(find.text('Could not load figures.'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
+    });
+
+    /// The "Your business" space is an auto-advancing showcase: the shop's name
+    /// rides a ribbon, the logo sits on the canvas, and one product from each of
+    /// three categories is featured — rather than the terse detail rows it used
+    /// to carry.
+    testWidgets('features the shop on an auto-advancing showcase slide', (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/business')) {
+          return json({
+            'business': {
+              'id': 'business-1',
+              'ownerUserId': 'user-123',
+              'businessName': 'Ada Provisions',
+              'businessCategory': 'Groceries',
+              'businessDescription': null,
+              'phone': '+2348012345678',
+              'email': null,
+              'logoUrl': null,
+              'location': {
+                'id': 'loc-1',
+                'businessId': 'business-1',
+                'address': '12 Allen Avenue',
+                'city': 'Ikeja',
+                'state': 'Lagos',
+                'country': 'Nigeria',
+              },
+            },
+          });
+        }
+        if (request.url.path.endsWith('/products')) {
+          return json({
+            'products': [
+              {
+                'id': 'p1',
+                'businessId': 'business-1',
+                'name': 'Rice 50kg',
+                'priceKobo': 2_500_000,
+                'stockQuantity': 4,
+                'active': true,
+                'category': 'Grains',
+              },
+              {
+                'id': 'p2',
+                'businessId': 'business-1',
+                'name': 'Palm Oil',
+                'priceKobo': 180_000,
+                'stockQuantity': 20,
+                'active': true,
+                'category': 'Oils',
+              },
+              {
+                'id': 'p3',
+                'businessId': 'business-1',
+                'name': 'Detergent',
+                'priceKobo': 90_000,
+                'stockQuantity': 0,
+                'active': true,
+                'category': 'Cleaning',
+              },
+            ],
+          });
+        }
+        return json(<String, Object>{});
+      });
+      await repos.business.load();
+
+      await tester.pumpWidget(MaterialApp(
+        home: DashboardScreen(
+          dashboard: repos.dashboard,
+          business: repos.business,
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+          onOpenTransaction: (_) {},
+          onManualEntry: () {},
+          onSeeAllTransactions: () {},
+          onAddProduct: () {},
+          onAddCustomer: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // The name rides the ribbon (uppercased) and the logo is on the canvas.
+      expect(find.text('ADA PROVISIONS'), findsOneWidget);
+      expect(find.byType(BusinessLogoAvatar), findsWidgets);
+      expect(find.byType(PageView), findsOneWidget, reason: 'the space is a slide');
+
+      // One product from each of the three categories is featured.
+      expect(find.text('Rice 50kg'), findsOneWidget);
+      expect(find.text('Palm Oil'), findsOneWidget);
+      expect(find.text('GRAINS'), findsOneWidget);
+      expect(find.text('OILS'), findsOneWidget);
+
+      // The slide advances itself, so the page moves on without a tap.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsOneWidget);
     });
   });
 
