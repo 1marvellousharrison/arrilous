@@ -173,27 +173,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             ),
           ],
         ),
-        if (customer.address != null || customer.notes != null) ...[
+        if (customer.notes != null) ...[
           const SizedBox(height: AppSpacing.xl),
           AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (customer.address != null) ...[
-                  _DetailRow(
-                    icon: Icons.place_outlined,
-                    label: 'Address',
-                    value: customer.address!,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-                if (customer.notes != null)
-                  _DetailRow(
-                    icon: Icons.sticky_note_2_outlined,
-                    label: 'Notes',
-                    value: customer.notes!,
-                  ),
-              ],
+            child: _DetailRow(
+              icon: Icons.sticky_note_2_outlined,
+              label: 'Notes',
+              value: customer.notes!,
             ),
           ),
         ],

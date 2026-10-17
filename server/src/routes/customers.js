@@ -26,7 +26,6 @@ export function publicCustomer(row) {
     name: row.name,
     phone: row.phone,
     email: row.email,
-    address: row.address,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -89,14 +88,13 @@ customerRouter.post('/', async (req, res) => {
   const body = parse(customerCreateSchema, req.body);
   const id = crypto.randomUUID();
   await run(
-    `INSERT INTO customers (id, business_id, name, phone, email, address, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO customers (id, business_id, name, phone, email, notes)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     id,
     req.business.id,
     body.name,
-    body.phone ?? null,
+    body.phone,
     body.email ?? null,
-    body.address ?? null,
     body.notes ?? null
   );
   res.status(201).json({
@@ -135,7 +133,6 @@ customerRouter.patch('/:id', requireOwner, async (req, res) => {
     name: 'name',
     phone: 'phone',
     email: 'email',
-    address: 'address',
     notes: 'notes',
   };
 

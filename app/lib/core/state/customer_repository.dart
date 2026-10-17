@@ -14,7 +14,6 @@ class Customer {
     required this.name,
     this.phone,
     this.email,
-    this.address,
     this.notes,
     this.transactionCount = 0,
     this.totalSpentKobo = 0,
@@ -26,7 +25,6 @@ class Customer {
         name: json['name'] as String? ?? '',
         phone: json['phone'] as String?,
         email: json['email'] as String?,
-        address: json['address'] as String?,
         notes: json['notes'] as String?,
         transactionCount: (json['transactionCount'] as num?)?.toInt() ?? 0,
         totalSpentKobo: (json['totalSpentKobo'] as num?)?.toInt() ?? 0,
@@ -37,7 +35,6 @@ class Customer {
   final String name;
   final String? phone;
   final String? email;
-  final String? address;
   final String? notes;
   final int transactionCount;
   final int totalSpentKobo;
@@ -145,16 +142,14 @@ class CustomerRepository extends ChangeNotifier {
   Future<Customer> save({
     String? id,
     required String name,
-    String? phone,
+    required String phone,
     String? email,
-    String? address,
     String? notes,
   }) async {
     final body = <String, dynamic>{
       'name': name,
       'phone': _blankToNull(phone),
       'email': _blankToNull(email),
-      'address': _blankToNull(address),
       'notes': _blankToNull(notes),
     };
 

@@ -17,11 +17,11 @@ describe('phase 4 — customers', () => {
     const customer = await addCustomer(owner, {
       name: '  Ada Nwosu  ',
       email: 'ada@example.com',
-      address: '9 Bode Thomas, Surulere',
     });
 
     assert.equal(customer.name, 'Ada Nwosu');
     assert.equal(customer.email, 'ada@example.com');
+    assert.ok(customer.phone.startsWith('+234'), 'the phone comes back in E.164');
     assert.equal(customer.transactionCount, 0);
     assert.equal(customer.totalSpentKobo, 0);
   });
@@ -34,7 +34,18 @@ describe('phase 4 — customers', () => {
     });
 
     assert.equal(res.status, 422);
-    assert.ok(res.body.error.details.some((d) => d.field === 'name'));
+    assert.ok(res.body.error.details.some((detail) => detail.field === 'name'));
+  });
+
+  test('requires a phone number', async () => {
+    const owner = await createBusinessOwner('Phone Required Store');
+    const res = await api('POST', '/customers', {
+      token: owner.token,
+      body: { name: 'No Phone' },
+    });
+
+    assert.equal(res.status, 422);
+    assert.ok(res.body.error.details.some((detail) => detail.field === 'phone'));
   });
 
   test('rejects a malformed phone number', async () => {
@@ -65,7 +76,7 @@ describe('phase 4 — customers', () => {
 
   test('updates a customer without wiping the other fields', async () => {
     const owner = await createBusinessOwner('Updating Store');
-    const customer = await addCustomer(owner, { name: 'Old Name', address: 'Keep Me' });
+    const customer = await addCustomer(owner, { name: 'Old Name', email: 'keep@example.com' });
 
     const res = await api('PATCH', `/customers/${customer.id}`, {
       token: owner.token,
@@ -74,7 +85,7 @@ describe('phase 4 — customers', () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.customer.name, 'New Name');
-    assert.equal(res.body.customer.address, 'Keep Me');
+    assert.equal(res.body.customer.email, 'keep@example.com');
   });
 
   test('rejects an update that changes nothing', async () => {
@@ -93,7 +104,7 @@ describe('phase 4 — customers', () => {
     const owner = await createBusinessOwner('Security Store');
     const res = await api('POST', '/customers', {
       token: owner.token,
-      body: { name: 'Password Attempt', password: 'hunter2' },
+      body: { name: 'Password Attempt', phone: uniquePhone(), password: 'hunter2' },
     });
 
     assert.equal(res.status, 201);

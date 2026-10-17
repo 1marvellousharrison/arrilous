@@ -13,7 +13,7 @@ async function seedStore(owner) {
   const customer = (
     await api('POST', '/customers', {
       token: owner.token,
-      body: { name: 'Ada Nwosu' },
+      body: { name: 'Ada Nwosu', phone: '+2348030000001' },
     })
   ).body.customer;
 

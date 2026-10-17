@@ -269,9 +269,8 @@ export const customerCreateSchema = z.object({
     .trim()
     .min(2, 'Customer name must be at least 2 characters.')
     .max(160, 'Customer name is too long.'),
-  phone: phoneSchema.optional().nullable(),
+  phone: phoneSchema,
   email: emailSchema.optional().nullable(),
-  address: optionalText(400),
   notes: optionalText(1000),
 });
 

@@ -442,7 +442,6 @@ void main() {
       'name': 'Ada Nwosu',
       'phone': '+2348011111111',
       'email': null,
-      'address': null,
       'notes': null,
       'transactionCount': 2,
       'totalSpentKobo': 600000,
@@ -497,11 +496,11 @@ void main() {
       );
     });
 
-    test('sends blank contact fields as null', () async {
+    test('sends the phone in E.164 and keeps an empty email as null', () async {
       await withRepo(
         (_) async => json({'customer': customerJson}, status: 201),
         (_, _, customers) async {
-          await customers.save(name: 'Ada', phone: '  ');
+          await customers.save(name: 'Ada', phone: '+2348011111111');
           // save() reloads the list afterwards, so target the write itself.
           final post = log.firstWhere(
             (request) =>
@@ -509,8 +508,9 @@ void main() {
           );
           final body = jsonDecode(post.body) as Map<String, dynamic>;
           expect(body['name'], 'Ada');
-          expect(body['phone'], isNull);
+          expect(body['phone'], '+2348011111111');
           expect(body['email'], isNull);
+          expect(body.containsKey('address'), isFalse);
         },
       );
     });

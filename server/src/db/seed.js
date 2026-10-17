@@ -278,8 +278,8 @@ export async function seedDatabase({ force = false } = {}) {
 
     for (const customer of CUSTOMERS) {
       await run(
-        `INSERT INTO customers (id, business_id, name, phone, email, address, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'Lagos, Nigeria', ?, ?)`,
+        `INSERT INTO customers (id, business_id, name, phone, email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         customer.id,
         businessId,
         customer.name,

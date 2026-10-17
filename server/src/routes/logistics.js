@@ -620,7 +620,7 @@ logisticsRouter.get('/requests/:id', async (req, res) => {
       business: business
         ? { name: business.business_name, ownerName: businessOwner?.full_name ?? null, phone: business.phone ?? businessOwner?.phone ?? null, email: business.email ?? businessOwner?.email ?? null }
         : null,
-      customer: customer ? { name: customer.name, phone: customer.phone, email: customer.email, address: customer.address } : null,
+      customer: customer ? { name: customer.name, phone: customer.phone, email: customer.email } : null,
       rider: rider ? { name: rider.full_name, phone: rider.phone } : null,
       organization: organization ? { name: organization.name, phone: organization.phone, email: organization.email } : null,
       totals: sale

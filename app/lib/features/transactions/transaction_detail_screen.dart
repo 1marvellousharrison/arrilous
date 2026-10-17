@@ -159,14 +159,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             ],
           ),
           if (transaction.customerName != null) ...[
-            const SizedBox(height: AppSpacing.md),
+            const SizedBox(height: AppSpacing.sm),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.person_outline, size: 18, color: theme.colorScheme.onSurface),
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.person_outline, size: 18),
+                ),
                 const SizedBox(width: AppSpacing.sm),
-                Text(
-                  transaction.customerName!,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        transaction.customerName!,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (transaction.customerPhone != null)
+                        Text(
+                          transaction.customerPhone!,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),

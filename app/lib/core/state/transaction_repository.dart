@@ -197,6 +197,7 @@ class Transaction {
     this.items = const [],
     this.history = const [],
     this.customerName,
+    this.customerPhone,
   });
 
   factory Transaction.fromJson(
@@ -204,6 +205,7 @@ class Transaction {
     List<TransactionItem> items = const [],
     List<StatusHistoryEntry> history = const [],
     String? customerName,
+    String? customerPhone,
   }) =>
       Transaction(
         id: json['id'] as String,
@@ -226,12 +228,14 @@ class Transaction {
         items: items,
         history: history,
         customerName: customerName,
+        customerPhone: customerPhone,
       );
 
   final String id;
   final String transactionNumber;
   final String? customerId;
   final String? customerName;
+  final String? customerPhone;
   final String source;
   final int subtotalKobo;
   final int discountKobo;
@@ -547,6 +551,9 @@ class TransactionRepository extends ChangeNotifier {
             _objectList(data, 'history').map(StatusHistoryEntry.fromJson).toList(),
         customerName: customer is Map<String, dynamic>
             ? customer['name'] as String?
+            : null,
+        customerPhone: customer is Map<String, dynamic>
+            ? customer['phone'] as String?
             : null,
       );
     } on ApiException catch (error) {

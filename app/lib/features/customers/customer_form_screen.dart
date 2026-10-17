@@ -9,8 +9,10 @@ import '../../widgets/phone_field.dart';
 
 /// Create or edit a customer (Phase 4).
 ///
-/// Contact details are optional on purpose: a walk-in who only gives a name is
-/// still worth recording, and a missing phone must not block the sale.
+/// A phone number is required: it is the contact the business and any delivery
+/// rider rely on to reach the customer, so a customer is never recorded without
+/// one. The email stays optional, and the delivery address is captured on the
+/// sale itself only when an order needs delivering.
 class CustomerFormScreen extends StatefulWidget {
   const CustomerFormScreen({required this.customers, this.customer, super.key});
 
@@ -30,8 +32,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       TextEditingController(text: formatNationalPhone(widget.customer?.phone ?? ''));
   late final TextEditingController _email =
       TextEditingController(text: widget.customer?.email ?? '');
-  late final TextEditingController _address =
-      TextEditingController(text: widget.customer?.address ?? '');
   late final TextEditingController _notes =
       TextEditingController(text: widget.customer?.notes ?? '');
 
@@ -43,7 +43,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
 
   @override
   void dispose() {
-    for (final controller in [_name, _phone, _email, _address, _notes]) {
+    for (final controller in [_name, _phone, _email, _notes]) {
       controller.dispose();
     }
     super.dispose();
@@ -77,8 +77,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
               const SizedBox(height: AppSpacing.lg),
               NigerianPhoneField(
                 controller: _phone,
-                label: 'Phone (optional)',
-                required: false,
                 errorText: _fieldErrors['phone'],
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -89,13 +87,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                   labelText: 'Email (optional)',
                   errorText: _fieldErrors['email'],
                 ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              TextFormField(
-                controller: _address,
-                maxLines: 2,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Address (optional)'),
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
@@ -144,13 +135,10 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       await widget.customers.save(
         id: widget.customer?.id,
         name: _name.text.trim(),
-        // An optional field left empty stays empty; only a real number is
-        // widened to the '+234' international form the API stores.
-        phone: _phone.text.trim().isEmpty
-            ? ''
-            : toNigerianE164(_phone.text),
+        // The field holds the ten national digits; the API stores the full
+        // '+234' international form.
+        phone: toNigerianE164(_phone.text),
         email: _email.text.trim(),
-        address: _address.text.trim(),
         notes: _notes.text.trim(),
       );
       messenger.showSnackBar(

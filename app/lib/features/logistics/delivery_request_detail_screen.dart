@@ -142,8 +142,6 @@ class _DeliveryRequestDetailScreenState extends State<DeliveryRequestDetailScree
         ] else
           ('Customer', 'Walk-in customer'),
         ('Address', [destination['address'], destination['city']].whereType<String>().where((part) => part.trim().isNotEmpty).join(', ')),
-        if (customer != null && (customer['address'] as String? ?? '').isNotEmpty && customer['address'] != destination['address'])
-          ('Customer on file', customer['address'] as String),
       ],
     );
   }

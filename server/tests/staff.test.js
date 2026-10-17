@@ -248,7 +248,7 @@ describe('staff accounts — scoped access', () => {
 
     const created = await api('POST', '/customers', {
       token: staff.token,
-      body: { name: 'Walk In' },
+      body: { name: 'Walk In', phone: '+2348010000011' },
     });
     assert.equal(created.status, 201, JSON.stringify(created.body));
 

@@ -856,7 +856,7 @@ void main() {
                 },
               ],
             },
-            'customer': {'id': 'c1', 'name': 'Ada Nwosu'},
+            'customer': {'id': 'c1', 'name': 'Ada Nwosu', 'phone': '+2348031234567'},
             'history': [
               {
                 'id': 'h1',
@@ -892,6 +892,8 @@ void main() {
       expect(find.byType(ProductThumb), findsOneWidget);
       expect(find.byType(Image), findsWidgets);
       expect(find.text('Ada Nwosu'), findsOneWidget);
+      // The customer's phone rides along on the sale's details.
+      expect(find.text('+2348031234567'), findsOneWidget);
       // The timeline reads as sentences rather than raw values.
       expect(find.text('Order set to Pending'), findsOneWidget);
       expect(find.text('Order: Pending → Confirmed'), findsOneWidget);

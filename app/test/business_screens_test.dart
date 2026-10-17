@@ -966,7 +966,7 @@ void main() {
       );
     });
 
-    testWidgets('accepts a customer with only a name', (tester) async {
+    testWidgets('accepts a customer with a name and a phone', (tester) async {
       useTallSurface(tester);
       final repos = await signInOwner(
         (_) async => json({
@@ -980,6 +980,10 @@ void main() {
         find.widgetWithText(TextFormField, 'Customer name'),
         'Ada',
       );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Phone number'),
+        '8031234567',
+      );
       await tapLabel(tester, 'Add customer');
       await tester.pumpAndSettle();
 
@@ -988,7 +992,27 @@ void main() {
       );
       final body = jsonDecode(post.body) as Map<String, dynamic>;
       expect(body['name'], 'Ada');
-      expect(body['phone'], isNull);
+      expect(body['phone'], '+2348031234567');
+    });
+
+    testWidgets('will not save a customer without a phone', (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner((_) async => json({'customer': {}}));
+
+      await tester.pumpWidget(wrap(CustomerFormScreen(customers: repos.customers)));
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Customer name'),
+        'Ada',
+      );
+      await tapLabel(tester, 'Add customer');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Phone number is required.'), findsOneWidget);
+      expect(
+        log.where((request) => request.url.path.endsWith('/customers')),
+        isEmpty,
+      );
     });
 
     testWidgets('shows a server field error on the phone field', (tester) async {
@@ -1010,8 +1034,8 @@ void main() {
         'Ada',
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Phone (optional)'),
-        '+2348011111111',
+        find.widgetWithText(TextFormField, 'Phone number'),
+        '8031234567',
       );
       await tapLabel(tester, 'Add customer');
       await tester.pumpAndSettle();
