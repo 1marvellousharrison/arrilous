@@ -7,6 +7,7 @@ import 'package:dee_app/core/state/catalog_repository.dart';
 import 'package:dee_app/core/state/customer_repository.dart';
 import 'package:dee_app/core/state/dashboard_repository.dart';
 import 'package:dee_app/core/state/transaction_repository.dart';
+import 'package:dee_app/core/theme/app_theme.dart';
 import 'package:dee_app/features/home/dashboard_screen.dart';
 import 'package:dee_app/features/transactions/new_transaction_screen.dart';
 import 'package:dee_app/features/transactions/transaction_detail_screen.dart';
@@ -441,6 +442,61 @@ void main() {
       expect(find.text('Detergent'), findsOneWidget);
       expect(find.text('OUT'), findsOneWidget);
       expect(find.text('of stock'), findsOneWidget);
+    });
+
+    testWidgets('dresses the reel for light mode even when the app is dark',
+        (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/business')) {
+          return json({
+            'business': {
+              'id': 'business-1',
+              'ownerUserId': 'user-123',
+              'businessName': 'Ada Provisions',
+              'businessCategory': 'Groceries',
+              'businessDescription': null,
+              'phone': '+2348012345678',
+              'email': null,
+              'logoUrl': null,
+              'location': {
+                'id': 'loc-1',
+                'businessId': 'business-1',
+                'address': '12 Allen Avenue',
+                'city': 'Ikeja',
+                'state': 'Lagos',
+                'country': 'Nigeria',
+              },
+            },
+          });
+        }
+        if (request.url.path.endsWith('/products')) {
+          return json({'products': <Object>[]});
+        }
+        return json(<String, Object>{});
+      });
+      await repos.business.load();
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildDarkTheme(),
+        home: DashboardScreen(
+          dashboard: repos.dashboard,
+          business: repos.business,
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+          onOpenTransaction: (_) {},
+          onManualEntry: () {},
+          onSeeAllTransactions: () {},
+          onAddProduct: () {},
+          onAddCustomer: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // The reel keeps its light-mode ink even though the app is dark.
+      final welcome = tester.widget<Text>(find.text('WELCOME TO'));
+      expect(welcome.style?.color, AppColors.lightText.withValues(alpha: 0.5));
     });
   });
 

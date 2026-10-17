@@ -621,11 +621,17 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
     super.dispose();
   }
 
+  /// The reel is dressed for light mode whatever the app's theme is: it reads
+  /// as a poster, so its surfaces and text must not flip when dark mode is on.
+  static final ThemeData _reelTheme = buildLightTheme();
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AppCard(
-      padding: EdgeInsets.zero,
+    final theme = _reelTheme;
+    return Theme(
+      data: _reelTheme,
+      child: AppCard(
+        padding: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: SizedBox(
@@ -665,6 +671,7 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
             },
           ),
         ),
+      ),
       ),
     );
   }
