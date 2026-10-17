@@ -50,6 +50,41 @@ describe('phase 3 — product catalog', () => {
     assert.ok(res.body.error.details.some((d) => d.field === 'price_kobo'));
   });
 
+  test('stores a product photo given as an image data URL', async () => {
+    const owner = await createBusinessOwner('Photo Store');
+    const png =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC';
+
+    const created = await api('POST', '/products', {
+      token: owner.token,
+      body: { name: 'Photo Rice', price_kobo: 100, image_url: png },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.product.imageUrl, png);
+
+    const patched = await api('PATCH', `/products/${created.body.product.id}`, {
+      token: owner.token,
+      body: { image_url: png },
+    });
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.product.imageUrl, png);
+  });
+
+  test('refuses a product photo that is not an image data URL', async () => {
+    const owner = await createBusinessOwner('Bad Photo Store');
+    const res = await api('POST', '/products', {
+      token: owner.token,
+      body: {
+        name: 'Bad Photo',
+        price_kobo: 100,
+        image_url: 'https://example.com/photo.png',
+      },
+    });
+
+    assert.equal(res.status, 422);
+    assert.ok(res.body.error.details.some((d) => d.field === 'image_url'));
+  });
+
   test('rejects a negative price and a fractional quantity', async () => {
     const owner = await createBusinessOwner('Bad Numbers');
 

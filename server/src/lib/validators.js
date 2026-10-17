@@ -154,21 +154,26 @@ const optionalText = (max) =>
     .nullable()
     .transform((value) => (value ? value : null));
 
-// An optional logo, carried as a data-URL image so it travels in the same JSON
-// as the rest of the profile. The client downscales before sending, so this cap
-// only has to stop an outsized body, and only the shapes the client can produce
-// are accepted. Blank clears it, which is why the transform folds "" to null.
-const logoUrlSchema = z
+// An optional picture carried as a data-URL image so it travels in the same
+// JSON as the record it belongs to. The client downscales before sending, so
+// this cap only has to stop an outsized body, and only the shapes the client
+// can produce are accepted. Blank clears it, which is why the transform folds
+// "" to null. The business logo and the product photos are both this shape.
+const imageDataUrlSchema = z
   .string()
   .trim()
-  .max(400000, 'Logo image is too large.')
+  .max(400000, 'Image is too large.')
   .regex(
     /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/,
-    'Logo must be a PNG, JPEG or WebP image.'
+    'Image must be a PNG, JPEG or WebP.'
   )
   .optional()
   .nullable()
   .transform((value) => (value ? value : null));
+
+// The owner picks this from their gallery, so it only ever arrives as a
+// data URL — a plain link is refused the same way a stray text file is.
+const logoUrlSchema = imageDataUrlSchema;
 
 // Phase 1 — business profile
 export const businessCreateSchema = z.object({
@@ -239,7 +244,7 @@ export const productCreateSchema = z.object({
     .max(1_000_000, 'That is more stock than this app tracks.')
     .optional()
     .default(0),
-  image_url: optionalText(600),
+  image_url: imageDataUrlSchema,
 });
 
 export const productUpdateSchema = productCreateSchema

@@ -325,10 +325,12 @@ void main() {
 
     /// The "Your business" space is an auto-advancing reel: it opens on the
     /// shop's name on its ribbon, then walks every active product — one per
-    /// slide, with its price and stock — slipping the logo in between so the
-    /// products never run in a row.
+    /// slide, the photo filling most of it beside the name and the count left —
+    /// slipping the full-bleed logo in between so the products never run in a row.
     testWidgets('features the shop on an auto-advancing showcase slide', (tester) async {
       useTallSurface(tester);
+      const png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC';
       final repos = await signInOwner((request) async {
         if (request.url.path.endsWith('/business')) {
           return json({
@@ -340,7 +342,7 @@ void main() {
               'businessDescription': null,
               'phone': '+2348012345678',
               'email': null,
-              'logoUrl': null,
+              'logoUrl': png,
               'location': {
                 'id': 'loc-1',
                 'businessId': 'business-1',
@@ -363,6 +365,7 @@ void main() {
                 'stockQuantity': 4,
                 'active': true,
                 'category': 'Grains',
+                'imageUrl': png,
               },
               {
                 'id': 'p2',
@@ -411,30 +414,32 @@ void main() {
       expect(find.text('ADA PROVISIONS'), findsOneWidget);
       expect(find.text('GROCERIES'), findsOneWidget);
 
-      // Then the first product gets its own slide, with price and stock.
+      // Rice has a photo, so it fills most of the slide and no letter shows.
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
       expect(find.text('Rice 50kg'), findsOneWidget);
-      expect(find.text('GRAINS'), findsOneWidget);
-      expect(find.text('4 in stock'), findsOneWidget);
+      expect(find.text('left'), findsOneWidget);
+      expect(find.text('R'), findsNothing, reason: 'a photo leaves no lettered fallback');
 
-      // The second product follows on its own slide.
+      // Palm Oil has none, so its initial stands in.
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
       expect(find.text('Palm Oil'), findsOneWidget);
-      expect(find.text('OILS'), findsOneWidget);
+      expect(find.text('left'), findsOneWidget);
+      expect(find.text('P'), findsOneWidget);
 
-      // The logo is slipped in between the products, on a slide of its own.
+      // The logo is slipped in between the products, filling the whole slide.
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
-      expect(find.text('ADA PROVISIONS'), findsOneWidget);
-      expect(find.text('Palm Oil'), findsNothing);
+      expect(find.text('Palm Oil'), findsNothing, reason: 'the logo takes a slide of its own');
+      expect(find.byType(Image), findsWidgets);
 
       // A product with nothing on the shelf says so.
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
       expect(find.text('Detergent'), findsOneWidget);
-      expect(find.text('Out of stock'), findsOneWidget);
+      expect(find.text('OUT'), findsOneWidget);
+      expect(find.text('of stock'), findsOneWidget);
     });
   });
 

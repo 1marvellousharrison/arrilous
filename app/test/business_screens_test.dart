@@ -901,6 +901,52 @@ void main() {
       expect(body['price_kobo'], 1500000);
       expect(body['price_kobo'], isA<int>());
     });
+
+    testWidgets('sends a picked photo as an image data URL', (tester) async {
+      useTallSurface(tester);
+      final png = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC',
+      );
+      final repos = await signInOwner(
+        (_) async => json({
+          'product': {
+            'id': 'product-1',
+            'name': 'Rice',
+            'priceKobo': 1500000,
+            'stockQuantity': 1,
+            'active': true,
+          },
+        }, status: 201),
+      );
+
+      await tester.pumpWidget(wrap(ProductFormScreen(
+        catalog: repos.catalog,
+        logoService: _FakeLogoService(png),
+      )));
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Product name'),
+        'Rice',
+      );
+      await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '15000');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Stock quantity'),
+        '3',
+      );
+
+      await tapLabel(tester, 'Add photo');
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsWidgets, reason: 'the pick previews in place');
+
+      await tapLabel(tester, 'Add product');
+      await tester.pumpAndSettle();
+
+      final post = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/products'),
+      );
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      expect(body['image_url'], startsWith('data:image/png;base64,'));
+    });
   });
 
   group('customer form', () {

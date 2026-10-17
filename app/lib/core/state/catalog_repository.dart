@@ -144,6 +144,7 @@ class CatalogRepository extends ChangeNotifier {
     String? description,
     String? category,
     String? sku,
+    String? imageUrl,
   }) async {
     final body = <String, dynamic>{
       'name': name,
@@ -153,6 +154,9 @@ class CatalogRepository extends ChangeNotifier {
       'description': _blankToNull(description),
       'category': _blankToNull(category),
       'sku': _blankToNull(sku),
+      // The picture travels as an image data URL, or null when the owner never
+      // picked one — sending it every time keeps clearing the photo possible.
+      'image_url': _blankToNull(imageUrl),
     };
 
     final data = id == null

@@ -1,7 +1,11 @@
+import 'dart:convert';
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/services/logo_service.dart';
 import '../../core/state/catalog_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
@@ -11,13 +15,15 @@ import '../../widgets/common.dart';
 ///
 /// The price field is typed in naira because that is what a shopkeeper thinks in,
 /// then converted to kobo before it is sent. The converted value is shown under
-/// the field so the number stored is never a surprise.
+/// the field so the number stored is never a surprise. The owner can also attach
+/// a photo, which is what the home showcase puts on the product's own slide.
 class ProductFormScreen extends StatefulWidget {
   const ProductFormScreen({
     required this.catalog,
     this.product,
     super.key,
     this.readOnly = false,
+    this.logoService,
   });
 
   final CatalogRepository catalog;
@@ -25,6 +31,10 @@ class ProductFormScreen extends StatefulWidget {
 
   /// Viewing only — a staff member can read a product but not edit or add one.
   final bool readOnly;
+
+  /// The device picker behind the photo tile. Isolated so tests can choose an
+  /// image without a real gallery, the same way the setup flow does.
+  final LogoService? logoService;
 
   @override
   State<ProductFormScreen> createState() => _ProductFormScreenState();
@@ -50,7 +60,23 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   String? _formError;
   final Map<String, String> _fieldErrors = {};
 
+  /// The product photo, if any — stored as a data URL so it can be previewed
+  /// inside the form and sent straight to the server.
+  String? _imageUrl;
+  Uint8List? _imageBytes;
+  bool _pickingImage = false;
+
+  late final LogoService _imageService =
+      widget.logoService ?? const DeviceLogoService();
+
   bool get _isEditing => widget.product != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageUrl = widget.product?.imageUrl;
+    _imageBytes = BusinessLogoAvatar.decode(widget.product?.imageUrl);
+  }
 
   @override
   void dispose() {
@@ -107,14 +133,43 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     (value == null || value.trim().length < 2) ? 'Enter a product name.' : null,
               ),
               const SizedBox(height: AppSpacing.lg),
-              TextFormField(
-                controller: _description,
-                enabled: !widget.readOnly,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  alignLabelWithHint: true,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Product photo',
+                          style: theme.textTheme.labelLarge,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        _photoTile(theme),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'This shows on the product slide. You can leave it blank.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _description,
+                      enabled: !widget.readOnly,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Description (optional)',
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpacing.lg),
               Row(
@@ -244,6 +299,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         description: _description.text.trim(),
         category: _category.text.trim(),
         sku: _sku.text.trim(),
+        imageUrl: _imageUrl,
       );
       messenger.showSnackBar(
         SnackBar(
@@ -257,6 +313,65 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       if (mounted) setState(() => _formError = error.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Widget _photoTile(ThemeData theme) {
+    final hasPhoto = _imageBytes != null;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.field),
+      child: InkWell(
+        onTap: (widget.readOnly || _pickingImage) ? null : _pickImage,
+        child: Container(
+          width: 96,
+          height: 96,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant,
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.field),
+          ),
+          child: hasPhoto
+              ? Image.memory(_imageBytes!, width: 96, height: 96, fit: BoxFit.cover)
+              : Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.photo_library_outlined, color: theme.colorScheme.primary),
+                      const SizedBox(height: 6),
+                      Text(
+                        _imageUrl == null ? 'Add photo' : 'Change',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _pickingImage = true);
+    try {
+      final bytes = await _imageService.pick();
+      if (!mounted) return;
+      if (bytes == null) {
+        return;
+      }
+      setState(() {
+        _imageBytes = bytes;
+        _imageUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+      });
+    } on Object {
+      // The picker can throw on some platforms if the gallery is unavailable. If
+      // it does, do not block saving — the product still posts without a photo.
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
     }
   }
 

@@ -810,8 +810,9 @@ class _NameSlide extends StatelessWidget {
   }
 }
 
-/// A dedicated slide for the shop's logo so it gets room to breathe instead of
-/// sitting as a small stamp in the corner.
+/// The shop's logo filling the whole slide — a full-bleed cover so the owner's
+/// mark is the slide, not a stamp sitting on it. With no logo it falls back to
+/// a warm wash carrying the name.
 class _LogoSlide extends StatelessWidget {
   const _LogoSlide({required this.name, required this.logoUrl});
 
@@ -820,48 +821,62 @@ class _LogoSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return SizedBox.expand(child: _logo(context));
+  }
+
+  Widget _logo(BuildContext context) {
     final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.xxl,
+    final url = logoUrl;
+    if (url != null && url.isNotEmpty) {
+      if (url.startsWith('data:')) {
+        final bytes = BusinessLogoAvatar.decode(url);
+        if (bytes != null) return Image.memory(bytes, fit: BoxFit.cover);
+        return _fallback(theme);
+      }
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallback(theme),
+      );
+    }
+    return _fallback(theme);
+  }
+
+  Widget _fallback(ThemeData theme) {
+    final trimmed = name.trim();
+    final letter = trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.orangeRed, AppColors.orangeRedDark],
         ),
+      ),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
+            Text(
+              letter,
+              style: const TextStyle(
                 color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.orangeRed.withValues(alpha: 0.28),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: BusinessLogoAvatar(
-                logoUrl: logoUrl,
-                name: name,
-                size: 88,
-                radius: BorderRadius.circular(AppRadius.pill),
+                fontSize: 60,
+                fontWeight: FontWeight.w900,
               ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              name.toUpperCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic,
-                letterSpacing: 0.5,
-                color: theme.colorScheme.primary,
+            const SizedBox(height: AppSpacing.xs),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Text(
+                name.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
           ],
@@ -871,8 +886,8 @@ class _LogoSlide extends StatelessWidget {
   }
 }
 
-/// A product's own slide: its picture on the left, then the name, its price and
-/// how much is left on the shelf.
+/// A product's own slide. The picture takes four-fifths of the slide and the
+/// last fifth carries the name and — in heavy type — how much is left.
 class _ProductSlide extends StatelessWidget {
   const _ProductSlide({required this.product});
 
@@ -881,8 +896,8 @@ class _ProductSlide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final category = product.category?.trim() ?? '';
     final inStock = product.stockQuantity > 0;
+    final accent = inStock ? theme.colorScheme.primary : theme.colorScheme.error;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -892,76 +907,46 @@ class _ProductSlide extends StatelessWidget {
         AppSpacing.xxl,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ProductArt(product: product, size: 104),
-          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            flex: 4,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.field),
+              child: _ProductArt(product: product),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (category.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                    child: Text(
-                      category.toUpperCase(),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: AppSpacing.sm),
                 Text(
                   product.name,
-                  maxLines: 2,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
+                    height: 1.15,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xs),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
-                  formatKobo(product.priceKobo),
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  inStock ? '${product.stockQuantity}' : 'OUT',
+                  style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
-                    color: theme.colorScheme.primary,
+                    height: 1.0,
+                    color: accent,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xs),
-                Row(
-                  children: [
-                    Icon(
-                      inStock
-                          ? Icons.inventory_2_outlined
-                          : Icons.remove_shopping_cart_outlined,
-                      size: 14,
-                      color: inStock
-                          ? AppColors.success
-                          : theme.colorScheme.error,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      inStock
-                          ? '${product.stockQuantity} in stock'
-                          : 'Out of stock',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: inStock
-                            ? AppColors.success
-                            : theme.colorScheme.error,
-                      ),
-                    ),
-                  ],
+                Text(
+                  inStock ? 'left' : 'of stock',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: accent,
+                  ),
                 ),
               ],
             ),
@@ -975,17 +960,14 @@ class _ProductSlide extends StatelessWidget {
 /// The product's picture when it has one, otherwise a warm tile with its
 /// initial — so the slide still reads as "this product" while photos are rare.
 class _ProductArt extends StatelessWidget {
-  const _ProductArt({required this.product, required this.size});
+  const _ProductArt({required this.product});
 
   final Product product;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fallback = Container(
-      width: size,
-      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -999,31 +981,15 @@ class _ProductArt extends StatelessWidget {
       ),
       child: Text(
         _initial(product.name),
-        style: theme.textTheme.displaySmall?.copyWith(
+        style: TextStyle(
+          fontSize: 44,
           fontWeight: FontWeight.w900,
           color: theme.colorScheme.primary,
         ),
       ),
     );
 
-    return Container(
-      width: size,
-      height: size,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.field),
-        border: Border.all(color: AppColors.orangeRed.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: _image(fallback),
-    );
+    return SizedBox.expand(child: _image(fallback));
   }
 
   Widget _image(Widget fallback) {
@@ -1032,12 +998,10 @@ class _ProductArt extends StatelessWidget {
     if (url.startsWith('data:')) {
       final bytes = BusinessLogoAvatar.decode(url);
       if (bytes == null) return fallback;
-      return Image.memory(bytes, width: size, height: size, fit: BoxFit.cover);
+      return Image.memory(bytes, fit: BoxFit.cover);
     }
     return Image.network(
       url,
-      width: size,
-      height: size,
       fit: BoxFit.cover,
       errorBuilder: (_, _, _) => fallback,
     );
