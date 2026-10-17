@@ -218,8 +218,14 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  ProductThumb(
+                    imageUrl: item.imageUrl,
+                    name: item.name,
+                    size: 40,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
                   SizedBox(
                     width: 34,
                     child: Text(

@@ -60,6 +60,7 @@ export function publicItem(row) {
     transactionId: row.transaction_id,
     productId: row.product_id,
     name: row.product_name_snapshot,
+    imageUrl: row.image_url,
     quantity: row.quantity,
     unitPriceKobo: row.unit_price_kobo,
     subtotalKobo: row.subtotal_kobo,
@@ -138,6 +139,7 @@ async function resolveItems(businessId, rawItems) {
       return {
         productId: product.id,
         name: product.name,
+        imageUrl: product.image_url,
         unitPriceKobo: unitPrice,
         quantity: item.quantity,
         subtotalKobo: unitPrice * item.quantity,
@@ -154,6 +156,7 @@ async function resolveItems(businessId, rawItems) {
     return {
       productId: null,
       name: item.name,
+      imageUrl: null,
       unitPriceKobo: unitPrice,
       quantity: item.quantity,
       subtotalKobo: unitPrice * item.quantity,
@@ -234,13 +237,14 @@ transactionRouter.post('/', async (req, res) => {
     for (const item of items) {
       await run(
         `INSERT INTO transaction_items
-           (id, transaction_id, product_id, product_name_snapshot, quantity,
-            unit_price_kobo, subtotal_kobo)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (id, transaction_id, product_id, product_name_snapshot, image_url,
+            quantity, unit_price_kobo, subtotal_kobo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         crypto.randomUUID(),
         transactionId,
         item.productId,
         item.name,
+        item.imageUrl ?? null,
         item.quantity,
         item.unitPriceKobo,
         item.subtotalKobo

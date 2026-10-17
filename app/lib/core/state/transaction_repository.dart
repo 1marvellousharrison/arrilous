@@ -99,12 +99,14 @@ class TransactionItem {
     required this.unitPriceKobo,
     required this.subtotalKobo,
     this.productId,
+    this.imageUrl,
   });
 
   factory TransactionItem.fromJson(Map<String, dynamic> json) => TransactionItem(
         id: json['id'] as String? ?? '',
         productId: json['productId'] as String?,
         name: json['name'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String?,
         quantity: (json['quantity'] as num?)?.toInt() ?? 0,
         unitPriceKobo: (json['unitPriceKobo'] as num?)?.toInt() ?? 0,
         subtotalKobo: (json['subtotalKobo'] as num?)?.toInt() ?? 0,
@@ -113,6 +115,10 @@ class TransactionItem {
   final String id;
   final String? productId;
   final String name;
+
+  /// The product's picture as it was at the moment of sale, so a receipt keeps
+  /// the mark that was sold even if the product is edited or archived.
+  final String? imageUrl;
   final int quantity;
   final int unitPriceKobo;
   final int subtotalKobo;

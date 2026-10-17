@@ -11,6 +11,7 @@ import 'package:dee_app/features/home/dashboard_screen.dart';
 import 'package:dee_app/features/transactions/new_transaction_screen.dart';
 import 'package:dee_app/features/transactions/transaction_detail_screen.dart';
 import 'package:dee_app/features/transactions/transactions_screen.dart';
+import 'package:dee_app/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -560,6 +561,8 @@ void main() {
 
     testWidgets('adds a catalog product and posts the sale', (tester) async {
       useTallSurface(tester);
+      const png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC';
       final repos = await signInOwner((request) async {
         if (request.method == 'POST') {
           return json({'transaction': transactionJson()}, status: 201);
@@ -594,6 +597,7 @@ void main() {
                 'priceKobo': 1_500_000,
                 'stockQuantity': 4,
                 'active': true,
+                'imageUrl': png,
               },
             ],
           });
@@ -613,6 +617,12 @@ void main() {
 
       await tapText(tester, 'Add product');
       await tester.pumpAndSettle();
+
+      // The picker leads each product with its picture, not just its name.
+      expect(find.byType(ProductThumb), findsOneWidget);
+      expect(find.byType(Image), findsWidgets);
+      expect(find.text('B'), findsNothing, reason: 'the photo replaces the letter tile');
+
       await tapText(tester, 'Black Shirt');
       await tester.pumpAndSettle();
 
@@ -768,6 +778,8 @@ void main() {
 
     testWidgets('shows the money, the items and the timeline', (tester) async {
       useTallSurface(tester);
+      const png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC';
       final repos = await signInOwner((request) async {
         if (request.url.path.endsWith('/transactions/txn-1')) {
           return json({
@@ -784,6 +796,7 @@ void main() {
                   'quantity': 2,
                   'unitPriceKobo': 1_500_000,
                   'subtotalKobo': 3_000_000,
+                  'imageUrl': png,
                 },
               ],
             },
@@ -819,6 +832,9 @@ void main() {
       expect(find.text('₦30,000.00'), findsWidgets);
       expect(find.text('Black Shirt'), findsOneWidget);
       expect(find.text('2×'), findsOneWidget);
+      // The record keeps the picture the item was sold with.
+      expect(find.byType(ProductThumb), findsOneWidget);
+      expect(find.byType(Image), findsWidgets);
       expect(find.text('Ada Nwosu'), findsOneWidget);
       // The timeline reads as sentences rather than raw values.
       expect(find.text('Order set to Pending'), findsOneWidget);

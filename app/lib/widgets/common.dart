@@ -365,6 +365,76 @@ class BusinessLogoAvatar extends StatelessWidget {
   }
 }
 
+/// A product's picture at thumbnail size, or its first letter on a warm tile
+/// when it has none. Product photos travel as image data URLs (the client
+/// downscales before sending), but a plain URL is handled too, so the same tile
+/// reads correctly in the catalog, the sale picker and a transaction record.
+class ProductThumb extends StatelessWidget {
+  const ProductThumb({
+    required this.name,
+    super.key,
+    this.imageUrl,
+    this.size = 44,
+    this.radius,
+  });
+
+  final String? imageUrl;
+  final String name;
+  final double size;
+  final BorderRadius? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trimmed = name.trim();
+    final letter = trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.orangeRed.withValues(alpha: 0.22),
+            AppColors.orangeRed.withValues(alpha: 0.10),
+          ],
+        ),
+        borderRadius: radius ?? BorderRadius.circular(AppRadius.field),
+      ),
+      child: _content(theme, letter),
+    );
+  }
+
+  Widget _content(ThemeData theme, String letter) {
+    final url = imageUrl;
+    if (url == null || url.isEmpty) return _initial(theme, letter);
+    if (url.startsWith('data:')) {
+      final bytes = BusinessLogoAvatar.decode(url);
+      if (bytes == null) return _initial(theme, letter);
+      return Image.memory(bytes, width: size, height: size, fit: BoxFit.cover);
+    }
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => _initial(theme, letter),
+    );
+  }
+
+  Widget _initial(ThemeData theme, String letter) => Text(
+        letter,
+        style: TextStyle(
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.w900,
+          color: theme.colorScheme.primary,
+        ),
+      );
+}
+
 /// Shimmer-free skeleton block used while data loads.
 class SkeletonBox extends StatelessWidget {
   const SkeletonBox({

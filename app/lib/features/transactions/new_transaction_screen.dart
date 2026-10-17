@@ -694,6 +694,11 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                               itemBuilder: (context, index) {
                                 final product = products[index];
                                 return ListTile(
+                                  leading: ProductThumb(
+                                    imageUrl: product.imageUrl,
+                                    name: product.name,
+                                    size: 40,
+                                  ),
                                   title: Text(product.name),
                                   subtitle: Text(
                                     product.isOutOfStock

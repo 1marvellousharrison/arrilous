@@ -222,6 +222,43 @@ describe('phase 6 — items and server-side totals', () => {
     assert.equal(created.totalKobo, 2500050);
   });
 
+  test('snapshots the product picture onto the line it was sold as', async () => {
+    const owner = await createBusinessOwner('Photo Sale Store');
+    const png =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP478oAAAOLAUV+7IS+AAAAAElFTkSuQmCC';
+    const product = (
+      await api('POST', '/products', {
+        token: owner.token,
+        body: { name: 'Rice 50kg', price_kobo: 2500050, stock_quantity: 10, image_url: png },
+      })
+    ).body.product;
+
+    const created = await createTransaction(owner, {
+      items: [{ product_id: product.id, quantity: 1 }],
+    });
+
+    assert.equal(created.items[0].imageUrl, png);
+
+    // The snapshot is stamped at sale time: editing the product later does not
+    // reach back and rewrite what the receipt says was sold.
+    await api('PATCH', `/products/${product.id}`, {
+      token: owner.token,
+      body: { image_url: null },
+    });
+    const fetched = await api('GET', `/transactions/${created.id}`, { token: owner.token });
+    assert.equal(fetched.body.transaction.items[0].imageUrl, png);
+  });
+
+  test('an ad-hoc line carries no product image', async () => {
+    const owner = await createBusinessOwner('Ad Hoc Photo Store');
+
+    const created = await createTransaction(owner, {
+      items: [{ name: 'Custom cake order', unit_price_kobo: 35000, quantity: 1 }],
+    });
+
+    assert.equal(created.items[0].imageUrl, null);
+  });
+
   test('allows an ad-hoc line with its own name and price', async () => {
     const owner = await createBusinessOwner('Ad Hoc Store');
 

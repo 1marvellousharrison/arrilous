@@ -689,7 +689,9 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
   Widget _footer(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 7),
-      color: Colors.white.withValues(alpha: 0.62),
+      // Near-opaque so the shop's address and catalog count stay legible over
+      // whatever slide is showing behind them.
+      color: Colors.white.withValues(alpha: 0.92),
       child: Row(
         children: [
           Icon(Icons.place_outlined, size: 13, color: theme.colorScheme.primary),
