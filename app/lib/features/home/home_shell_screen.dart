@@ -9,6 +9,8 @@ import '../../core/state/logistics_repository.dart';
 import '../../core/state/staff_repository.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/state/wallet_repository.dart';
+import '../../core/state/ai_repository.dart';
+import '../../core/state/app_notifications_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../business/business_edit_gate.dart';
@@ -24,6 +26,8 @@ import '../transactions/transactions_screen.dart';
 import '../logistics/business_logistics_screen.dart';
 import '../logistics/delivery_requests_list_screen.dart';
 import '../logistics/notifications_screen.dart';
+import 'ai_chat_screen.dart';
+import 'app_notifications_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -319,7 +323,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onOpen: _openTransaction,
           onCreate: _newTransaction,
         ),
-      2 => const _ComingSoonScreen(),
+      2 => AiChatScreen(ai: widget.ai, catalog: widget.catalog, customers: widget.customers),
       3 => BusinessLogisticsScreen(business: widget.business, transactions: widget.transactions, logistics: widget.logistics),
       _ => _ProfileScreen(
           onOpenSettings: widget.onOpenSettings,

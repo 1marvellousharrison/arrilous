@@ -12,6 +12,8 @@ import 'core/state/staff_repository.dart';
 import 'core/state/theme_controller.dart';
 import 'core/state/transaction_repository.dart';
 import 'core/state/wallet_repository.dart';
+import 'core/state/ai_repository.dart';
+import 'core/state/app_notifications_repository.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
@@ -70,6 +72,8 @@ class _BizinessAppState extends State<BizinessApp> {
   late final LogisticsRepository _logistics = LogisticsRepository(_api, _auth);
   late final WalletRepository _wallet = WalletRepository(_api, _auth);
   late final StaffRepository _staff = StaffRepository(_api, _auth);
+  late final AiRepository _ai = AiRepository(api: _api, token: _auth.session?.accessToken);
+  late final AppNotificationsRepository _appNotifications = AppNotificationsRepository(api: _api, token: _auth.session?.accessToken);
 
   /// Repositories that cache data belonging to the signed-in owner.
   List<ChangeNotifier> get _scopedRepositories => [
@@ -141,6 +145,8 @@ class _BizinessAppState extends State<BizinessApp> {
     );
   }
   void _clearScopedState() {
+    _ai.updateToken(null);
+    _appNotifications.updateToken(null);
     _business.reset();
     _catalog.reset();
     _customers.reset();
