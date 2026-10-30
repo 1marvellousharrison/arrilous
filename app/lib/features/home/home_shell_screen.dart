@@ -52,6 +52,8 @@ class HomeShellScreen extends StatefulWidget {
     required this.logistics,
     required this.wallet,
     required this.staff,
+    required this.ai,
+    required this.appNotifications,
     required this.onOpenSettings,
     required this.onSignOut,
     super.key,
@@ -66,6 +68,8 @@ class HomeShellScreen extends StatefulWidget {
   final LogisticsRepository logistics;
   final WalletRepository wallet;
   final StaffRepository staff;
+  final AiRepository ai;
+  final AppNotificationsRepository appNotifications;
   final VoidCallback onOpenSettings;
   final Future<void> Function() onSignOut;
 
@@ -323,7 +327,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onOpen: _openTransaction,
           onCreate: _newTransaction,
         ),
-      2 => const _ComingSoonScreen(),
+      2 => AiChatScreen(ai: widget.ai, catalog: widget.catalog, customers: widget.customers),
       3 => BusinessLogisticsScreen(business: widget.business, transactions: widget.transactions, logistics: widget.logistics),
       _ => _ProfileScreen(
           onOpenSettings: widget.onOpenSettings,

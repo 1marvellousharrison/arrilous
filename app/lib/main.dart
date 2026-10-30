@@ -138,6 +138,8 @@ class _BizinessAppState extends State<BizinessApp> {
                   logistics: _logistics,
                   wallet: _wallet,
                   staff: _staff,
+                  ai: _ai,
+                  appNotifications: _appNotifications,
                   onSignedOut: _clearScopedState,
                 ),
         );
@@ -221,6 +223,8 @@ class _Root extends StatelessWidget {
     required this.logistics,
     required this.wallet,
     required this.staff,
+    required this.ai,
+    required this.appNotifications,
     required this.onSignedOut,
   });
 
@@ -234,6 +238,8 @@ class _Root extends StatelessWidget {
   final LogisticsRepository logistics;
   final WalletRepository wallet;
   final StaffRepository staff;
+  final AiRepository ai;
+  final AppNotificationsRepository appNotifications;
   final VoidCallback onSignedOut;
 
   @override
@@ -291,6 +297,8 @@ class _Root extends StatelessWidget {
           logistics: logistics,
           wallet: wallet,
           staff: staff,
+          ai: ai,
+          appNotifications: appNotifications,
           onSignOut: auth.signOut,
           onOpenSettings: () {
             Navigator.of(context).push(
