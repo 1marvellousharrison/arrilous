@@ -35,9 +35,9 @@ class _AppNotificationsScreenState extends State<AppNotificationsScreen> {
             ],
           ),
           body: items.isEmpty
-              ? const ListView(
-                  padding: EdgeInsets.all(AppSpacing.lg),
-                  children: [
+              ? ListView(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  children: const [
                     EmptyState(
                       icon: Icons.notifications_none,
                       title: 'No notifications',
