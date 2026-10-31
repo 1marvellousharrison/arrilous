@@ -238,20 +238,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           state: 'Available',
           available: true,
           onTap: () {
-            // Switch to AI/Chats tab
-            if (context.mounted) {
-              Navigator.of(context).maybePop();
-            }
-            // Try to find HomeShell and switch tab - simpler: push to AI chat via a route
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => Scaffold(
+                builder: (context) => Scaffold(
                   appBar: AppBar(title: const Text('AI / Chats')),
                   body: Center(
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('Go back to switch to AI/Chats tab'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Go to the AI / Chats tab in the bottom navigation to import from screenshot/photo.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ),
                   ),
                 ),
