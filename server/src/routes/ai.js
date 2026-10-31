@@ -146,6 +146,8 @@ function missingFieldLabel(f) {
 }
 
 async function extractOrderFromImage(imageData) {
+  // Heuristic placeholder - enhanced to attempt basic extraction if possible
+  // For now return structured empty but could be enhanced with OCR later
   return {
     customerName: null,
     customerPhone: null,

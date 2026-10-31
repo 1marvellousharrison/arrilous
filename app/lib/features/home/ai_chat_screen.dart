@@ -144,7 +144,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
                                         ),
                                       ),
                                     ),
-                                  Text(m.content),
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (m.messageType == 'image' && m.metadata?['image'] != null) {
+                                        showDialog(
+                                          context: context,
+                                          builder: (_) => Dialog(
+                                            insetPadding: const EdgeInsets.all(16),
+                                            child: InteractiveViewer(
+                                              child: Image.memory(
+                                                base64Decode(m.metadata!['image'].toString().split(',').last),
+                                                fit: BoxFit.contain,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Text(m.content),
+                                  ),
                                   if (m.metadata?['incomplete'] == true && m.orderImportId != null) ...[
                                     const SizedBox(height: AppSpacing.sm),
                                     FilledButton(
