@@ -29,6 +29,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onSeeAllTransactions,
     required this.onAddProduct,
     required this.onAddCustomer,
+    this.onGoToAiChat,
     super.key,
     this.canAddProduct = true,
   });
@@ -46,6 +47,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onSeeAllTransactions;
   final VoidCallback onAddProduct;
   final VoidCallback onAddCustomer;
+  final VoidCallback? onGoToAiChat;
 
   /// A staff member can add customers but not products, so the quick action is
   /// hidden rather than offered and refused.
@@ -238,17 +240,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
           state: 'Available',
           available: true,
           onTap: () {
+            if (widget.onGoToAiChat != null) {
+              widget.onGoToAiChat!();
+              return;
+            }
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (context) => Scaffold(
                   appBar: AppBar(title: const Text('AI / Chats')),
-                  body: Center(
+                  body: const Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.all(16),
                       child: Text(
-                        'Go to the AI / Chats tab in the bottom navigation to import from screenshot/photo.',
+                        'Go to the AI / Chats tab to import from screenshot/photo.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ),

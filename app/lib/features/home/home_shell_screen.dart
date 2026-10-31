@@ -320,6 +320,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onSeeAllTransactions: () => _onTab(1),
           onAddProduct: _addProduct,
           onAddCustomer: _addCustomer,
+          onGoToAiChat: () => _onTab(2),
           canAddProduct: !_isStaff,
         ),
       1 => TransactionsScreen(
