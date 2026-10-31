@@ -29,6 +29,7 @@ class AiChatScreen extends StatefulWidget {
 class _AiChatScreenState extends State<AiChatScreen> {
   final _picker = ImagePicker();
   bool _uploading = false;
+  String? _expandedImageId;
 
   @override
   void initState() {
@@ -110,59 +111,69 @@ class _AiChatScreenState extends State<AiChatScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (m.messageType == 'image' && m.metadata?['image'] != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            showDialog(
-                                              context: context,
-                                              builder: (_) => Dialog(
-                                                insetPadding: const EdgeInsets.all(16),
-                                                child: InteractiveViewer(
-                                                  child: Image.memory(
-                                                    base64Decode(m.metadata!['image'].toString().split(',').last),
-                                                    fit: BoxFit.contain,
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                          child: Image.memory(
-                                            base64Decode(m.metadata!['image'].toString().split(',').last),
-                                            height: 200,
-                                            width: double.infinity,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => Container(
-                                              height: 200,
-                                              color: Colors.grey.shade200,
-                                              child: const Center(child: Icon(Icons.broken_image)),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
                                   GestureDetector(
                                     onTap: () {
                                       if (m.messageType == 'image' && m.metadata?['image'] != null) {
-                                        showDialog(
-                                          context: context,
-                                          builder: (_) => Dialog(
-                                            insetPadding: const EdgeInsets.all(16),
-                                            child: InteractiveViewer(
-                                              child: Image.memory(
-                                                base64Decode(m.metadata!['image'].toString().split(',').last),
-                                                fit: BoxFit.contain,
-                                              ),
-                                            ),
-                                          ),
-                                        );
+                                        setState(() {
+                                          final id = m.id;
+                                          if (_expandedImageId == id) {
+                                            _expandedImageId = null;
+                                          } else {
+                                            _expandedImageId = id;
+                                          }
+                                        });
                                       }
                                     },
                                     child: Text(m.content),
                                   ),
+                                  if (_expandedImageId == m.id && m.messageType == 'image' && m.metadata?['image'] != null) ...[
+                                    const SizedBox(height: AppSpacing.sm),
+                                    GestureDetector(
+                                      onTap: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (dialogContext) => Dialog(
+                                            insetPadding: EdgeInsets.zero,
+                                            backgroundColor: Colors.black,
+                                            child: Stack(
+                                              children: [
+                                                Center(
+                                                  child: InteractiveViewer(
+                                                    child: Image.memory(
+                                                      base64Decode(m.metadata!['image'].toString().split(',').last),
+                                                      fit: BoxFit.contain,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Positioned(
+                                                  top: 40,
+                                                  right: 16,
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                                                    onPressed: () => Navigator.of(dialogContext).pop(),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.memory(
+                                          base64Decode(m.metadata!['image'].toString().split(',').last),
+                                          height: 200,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            height: 200,
+                                            color: Colors.grey.shade200,
+                                            child: const Center(child: Icon(Icons.broken_image)),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   if (m.metadata?['incomplete'] == true && m.orderImportId != null) ...[
                                     const SizedBox(height: AppSpacing.sm),
                                     FilledButton(
