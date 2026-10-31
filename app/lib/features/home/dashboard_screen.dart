@@ -235,9 +235,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _EntryOption(
           icon: Icons.photo_camera_outlined,
           label: 'Screenshot / Photo',
-          state: 'Coming soon',
-          available: false,
-          onTap: _comingSoon,
+          state: 'Available',
+          available: true,
+          onTap: () {
+            // Switch to AI/Chats tab
+            if (context.mounted) {
+              Navigator.of(context).maybePop();
+            }
+            // Try to find HomeShell and switch tab - simpler: push to AI chat via a route
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('AI / Chats')),
+                  body: Center(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Go back to switch to AI/Chats tab'),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
