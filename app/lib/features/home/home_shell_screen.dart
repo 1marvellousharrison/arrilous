@@ -381,11 +381,14 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               trailing: const Icon(Icons.lock_outline),
             ),
             ListTile(
-              leading: Icon(Icons.photo_camera_outlined, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
-              enabled: false,
+              leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Screenshot / Photo'),
-              subtitle: const Text('Coming soon'),
-              trailing: const Icon(Icons.lock_outline),
+              subtitle: const Text('Import from screenshot'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _index = 2);
+              },
             ),
             const SizedBox(height: AppSpacing.md),
           ],
