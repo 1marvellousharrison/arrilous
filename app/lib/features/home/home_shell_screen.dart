@@ -542,16 +542,16 @@ class _ProfileScreenState extends State<_ProfileScreen> {
         children: [
           _businessHeader(widget.business.business),
           const SizedBox(height: AppSpacing.lg),
-          ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
-          ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
-          if (!widget.isStaff)
-            ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
           ListTile(
             leading: const Icon(Icons.notifications_none),
             title: const Text('Notifications'),
             subtitle: Text(logistics.unreadCount > 0 ? '${logistics.unreadCount} unread' : 'Delivery request activity'),
             onTap: _openNotifications,
           ),
+          ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
+          ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
+          if (!widget.isStaff)
+            ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
           ListTile(
             leading: const Icon(Icons.local_shipping_outlined),
             title: const Text('Delivery requests'),

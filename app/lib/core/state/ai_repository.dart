@@ -56,7 +56,7 @@ class AiRepository extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> completeImport(String importId, Map<String, dynamic> body) async {
-    final data = await _api.post('/ai/imports//complete', token: _token, body: body) as Map<String, dynamic>;
+    final data = await _api.post('/ai/imports/$importId/complete', token: _token, body: body) as Map<String, dynamic>;
     await loadImports();
     await loadChat();
     return data;

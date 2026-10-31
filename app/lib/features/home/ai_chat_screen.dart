@@ -43,7 +43,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() => _uploading = true);
     try {
       final bytes = await xfile.readAsBytes();
-      final dataUrl = 'data:image/jpeg;base64,';
+      final base64Image = base64Encode(bytes);
+      final dataUrl = 'data:image/jpeg;base64,$base64Image';
       final res = await widget.ai.importImage(imageDataUrl: dataUrl, source: 'screenshot');
       if (!mounted) return;
       if (res != null) {
@@ -109,6 +110,40 @@ class _AiChatScreenState extends State<AiChatScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (m.messageType == 'image' && m.metadata?['image'] != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (_) => Dialog(
+                                                insetPadding: const EdgeInsets.all(16),
+                                                child: InteractiveViewer(
+                                                  child: Image.memory(
+                                                    base64Decode(m.metadata!['image'].toString().split(',').last),
+                                                    fit: BoxFit.contain,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          child: Image.memory(
+                                            base64Decode(m.metadata!['image'].toString().split(',').last),
+                                            height: 200,
+                                            width: double.infinity,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => Container(
+                                              height: 200,
+                                              color: Colors.grey.shade200,
+                                              child: const Center(child: Icon(Icons.broken_image)),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   Text(m.content),
                                   if (m.metadata?['incomplete'] == true && m.orderImportId != null) ...[
                                     const SizedBox(height: AppSpacing.sm),
