@@ -159,5 +159,9 @@ export const config = {
     payments: { provider: process.env.PAYMENT_PROVIDER ?? 'simulated' },
     logistics: { provider: process.env.LOGISTICS_PROVIDER ?? null },
     notifications: { provider: process.env.NOTIFICATION_PROVIDER ?? null },
+    gemini: {
+      apiKey: process.env.GEMINI_API_KEY ?? null,
+      model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    },
   },
 };

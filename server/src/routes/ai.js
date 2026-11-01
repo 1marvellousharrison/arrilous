@@ -1,9 +1,11 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import { GoogleGenAI } from '@google/genai';
 import { queryOne, queryAll, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { config } from '../config.js';
 
 export const aiRouter = express.Router();
 aiRouter.use(requireAuth, requireBusiness);
@@ -145,19 +147,159 @@ function missingFieldLabel(f) {
   }
 }
 
+function parseGeminiJson(text) {
+  if (!text) return null;
+  let cleaned = text.trim();
+  // Strip markdown code fences if present
+  cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    // Try to extract JSON object
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function toKoboFromPrice(price) {
+  if (price === null || price === undefined || price === '') return null;
+  if (typeof price === 'number') {
+    // Assume naira value if reasonable, or already in kobo - better treat as naira-like decimal? But our schema uses kobo in DB
+    // Try to detect: if small (e.g., 500) likely naira? Or just store as number * 100 if it's a simple decimal
+    // Default: treat as naira and convert to kobo
+    return Math.round(price * 100);
+  }
+  const str = String(price).replace(/[^0-9.]/g, '');
+  if (!str) return null;
+  const num = Number.parseFloat(str);
+  if (Number.isNaN(num)) return null;
+  return Math.round(num * 100);
+}
+
 async function extractOrderFromImage(imageData) {
-  // Heuristic placeholder - enhanced to attempt basic extraction if possible
-  // For now return structured empty but could be enhanced with OCR later
-  return {
-    customerName: null,
-    customerPhone: null,
-    items: [],
-    deliveryRequired: false,
-    deliveryAddress: null,
-    deliveryFeeKobo: null,
-    discountKobo: 0,
-    notes: null,
-  };
+  const apiKey = config.integrations?.gemini?.apiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return {
+      customerName: null,
+      customerPhone: null,
+      items: [],
+      deliveryRequired: false,
+      deliveryAddress: null,
+      deliveryFeeKobo: null,
+      discountKobo: 0,
+      notes: null,
+    };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const model = config.integrations?.gemini?.model || 'gemini-2.5-flash';
+    const prompt = `You are an expert at parsing Nigerian/order screenshots (receipts, WhatsApp orders, invoices). 
+Parse the image and output STRICTLY VALID JSON with NO markdown, NO code fences, NO extra text.
+Return ONLY this JSON structure:
+{
+  "customerName": "string or null",
+  "phoneNumber": "string or null",
+  "deliveryAddress": "string or null",
+  "items": [
+    {
+      "name": "string",
+      "quantity": 1,
+      "price": 0.00
+    }
+  ],
+  "totalAmount": 0.00
+}
+
+Rules:
+- Extract customer name and phone number if present.
+- Extract delivery address if present (look for "Delivery to", address, state/city).
+- Extract all items with names, quantities (default 1 if missing), and prices (unit price per item as shown).
+- totalAmount should be the final total if visible.
+- Use null for missing string fields, numbers as numbers.
+- Do not invent items.`;
+
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: imageData.startsWith('data:image/png') ? 'image/png' : imageData.startsWith('data:image/jpeg') || imageData.startsWith('data:image/jpg') ? 'image/jpeg' : 'image/png',
+              data: imageData.includes(',') ? imageData.split(',')[1] : imageData,
+            },
+          },
+        ],
+      },
+    ];
+
+    const response = await ai.models.generateContent({
+      model,
+      contents,
+    });
+
+    const text = response?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || response?.text || '';
+    const parsed = parseGeminiJson(text);
+    if (!parsed) {
+      return {
+        customerName: null,
+        customerPhone: null,
+        items: [],
+        deliveryRequired: false,
+        deliveryAddress: null,
+        deliveryFeeKobo: null,
+        discountKobo: 0,
+        notes: null,
+      };
+    }
+
+    const items = Array.isArray(parsed.items)
+      ? parsed.items
+          .map((it) => {
+            const qty = Number(it.quantity) || 1;
+            const priceKobo = toKoboFromPrice(it.price);
+            return {
+              name: it.name || it.productName || null,
+              quantity: qty,
+              unit_price_kobo: priceKobo,
+              product_id: null,
+            };
+          })
+          .filter((it) => it.name)
+      : [];
+
+    const deliveryRequired = !!parsed.deliveryAddress;
+    return {
+      customerName: parsed.customerName || null,
+      customerPhone: parsed.phoneNumber || parsed.phone || parsed.customerPhone || null,
+      items,
+      deliveryRequired,
+      deliveryAddress: parsed.deliveryAddress || null,
+      deliveryFeeKobo: parsed.deliveryFeeKobo ? toKoboFromPrice(parsed.deliveryFeeKobo) : null,
+      discountKobo: 0,
+      notes: parsed.notes || null,
+    };
+  } catch (e) {
+    console.error('Gemini extraction failed:', e?.message || e);
+    return {
+      customerName: null,
+      customerPhone: null,
+      items: [],
+      deliveryRequired: false,
+      deliveryAddress: null,
+      deliveryFeeKobo: null,
+      discountKobo: 0,
+      notes: null,
+    };
+  }
 }
 
 function formatImport(row) {
