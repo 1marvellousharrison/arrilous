@@ -200,7 +200,7 @@ async function extractOrderFromImage(imageData) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const model = config.integrations?.gemini?.model || 'gemini-2.5-flash';
+    const model = config.integrations?.gemini?.model || 'gemini-3.8-flash';
     const prompt = `You are an expert at parsing Nigerian/order screenshots (receipts, WhatsApp orders, invoices). 
 Parse the image and output STRICTLY VALID JSON with NO markdown, NO code fences, NO extra text.
 Return ONLY this JSON structure:
