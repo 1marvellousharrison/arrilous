@@ -518,6 +518,9 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
 
   void _scheduleLookup() {
     _lookupTimer?.cancel();
+    if (mounted) {
+      setState(_refreshMissingFields);
+    }
     _lookupTimer = Timer(const Duration(milliseconds: 500), _lookupCustomer);
   }
 
@@ -566,6 +569,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
       if (_delivery && _address.text.trim().isEmpty && savedAddress.isNotEmpty) {
         _address.text = savedAddress;
       }
+      _refreshMissingFields();
     });
   }
 
@@ -584,6 +588,20 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   int _discountKobo() => parseNairaToKobo(_discount.text) ?? 0;
 
   int _totalKobo() => _subtotalKobo() + _feeKobo() - _discountKobo();
+
+  void _refreshMissingFields() {
+    final missing = <String>[];
+    if (_name.text.trim().isEmpty && _phone.text.trim().isEmpty) {
+      missing.add('customer_detail');
+    }
+    if (_items.isEmpty) missing.add('products');
+    if (_delivery) {
+      if (_feeKobo() <= 0) missing.add('delivery_fee');
+      if (_address.text.trim().isEmpty) missing.add('delivery_address');
+    }
+    _missingFields = missing;
+    _incomplete = missing.isNotEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -615,7 +633,10 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                   items: _items,
                   onAdd: _addItem,
                   onEdit: _editItem,
-                  onRemove: (index) => setState(() => _items.removeAt(index)),
+                  onRemove: (index) => setState(() {
+                    _items.removeAt(index);
+                    _refreshMissingFields();
+                  }),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _DeliverySection(
@@ -623,13 +644,11 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                   address: _address,
                   fee: _fee,
                   discount: _discount,
-                  onDeliveryChanged: (value) => setState(() => _delivery = value),
-                  onChanged: () => setState(() {}),
-                ),
-                if (_error == null) const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Subtotal ${formatKobo(_subtotalKobo())}',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  onDeliveryChanged: (value) => setState(() {
+                    _delivery = value;
+                    _refreshMissingFields();
+                  }),
+                  onChanged: () => setState(_refreshMissingFields),
                 ),
               ],
             ),
@@ -646,19 +665,21 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                      child: Row(
                         children: [
-                          Text(
-                            'Total',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                          Text('Total', style: theme.textTheme.bodySmall),
+                          const SizedBox(width: AppSpacing.sm),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                formatKobo(_totalKobo()),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                              ),
                             ),
-                          ),
-                          Text(
-                            formatKobo(_totalKobo()),
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ],
                       ),
@@ -807,6 +828,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                       } else {
                         _items[index] = line;
                       }
+                      _refreshMissingFields();
                     });
                     Navigator.pop(dialogContext);
                   },
