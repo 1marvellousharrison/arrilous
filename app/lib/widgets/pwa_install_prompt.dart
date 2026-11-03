@@ -62,7 +62,6 @@ class _PwaInstallPromptState extends State<PwaInstallPrompt> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 440),
                       child: _InstallCard(
-                        canPrompt: _install.canPrompt,
                         onDismiss: () => setState(() => _dismissed = true),
                         onInstall: () async {
                           if (_install.canPrompt) {
@@ -88,9 +87,8 @@ class _PwaInstallPromptState extends State<PwaInstallPrompt> {
 }
 
 class _InstallCard extends StatelessWidget {
-  const _InstallCard({required this.canPrompt, required this.onDismiss, required this.onInstall});
+  const _InstallCard({required this.onDismiss, required this.onInstall});
 
-  final bool canPrompt;
   final VoidCallback onDismiss;
   final VoidCallback onInstall;
 
@@ -125,7 +123,7 @@ class _InstallCard extends StatelessWidget {
             const SizedBox(width: AppSpacing.xs),
             FilledButton(
               onPressed: onInstall,
-              child: Text(canPrompt ? 'Install' : 'How'),
+              child: const Text('Install'),
             ),
           ],
         ),
