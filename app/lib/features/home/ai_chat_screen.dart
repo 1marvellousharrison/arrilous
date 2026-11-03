@@ -18,12 +18,14 @@ class AiChatScreen extends StatefulWidget {
     required this.ai,
     required this.catalog,
     required this.customers,
+    required this.onCreateOrder,
     super.key,
   });
 
   final AiRepository ai;
   final CatalogRepository catalog;
   final CustomerRepository customers;
+  final VoidCallback onCreateOrder;
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -96,6 +98,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     onReview: _openComplete,
                   ),
                 ),
+          bottomNavigationBar: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
+              child: FilledButton.icon(
+                onPressed: _uploading ? null : widget.onCreateOrder,
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+                label: const Text('New order'),
+              ),
+            ),
+          ),
         );
       },
     );
