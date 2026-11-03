@@ -31,3 +31,11 @@ services:
         sync: false
       - key: OTP_EXPOSE_IN_RESPONSE
         value: "false"
+      # Google Gemini vision key for screenshot order extraction. Server-side
+      # only; it is never sent to the client.
+      - key: GEMINI_API_KEY
+        sync: false
+      # Model name; the code also falls back through newer Flash releases when
+      # a model is retired or busy.
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
