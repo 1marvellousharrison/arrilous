@@ -18,14 +18,12 @@ class AiChatScreen extends StatefulWidget {
     required this.ai,
     required this.catalog,
     required this.customers,
-    required this.onCreateOrder,
     super.key,
   });
 
   final AiRepository ai;
   final CatalogRepository catalog;
   final CustomerRepository customers;
-  final VoidCallback onCreateOrder;
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -84,7 +82,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
               IconButton(
                 tooltip: 'Import from screenshot or photo',
                 onPressed: _uploading ? null : _pickAndImport,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
+                icon: _uploading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_photo_alternate_outlined),
               ),
             ],
           ),
@@ -98,17 +102,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     onReview: _openComplete,
                   ),
                 ),
-          bottomNavigationBar: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
-              child: FilledButton.icon(
-                onPressed: _uploading ? null : widget.onCreateOrder,
-                icon: const Icon(Icons.add_shopping_cart_outlined),
-                label: const Text('New order'),
-              ),
-            ),
-          ),
         );
       },
     );
@@ -684,7 +677,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                       onPressed: _saving ? null : _submit,
                       child: _saving
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Create order'),
+                          : const Text('Create sale'),
                     ),
                   ],
                 ),
