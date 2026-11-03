@@ -71,7 +71,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return AnimatedBuilder(
       animation: widget.ai,
       builder: (context, _) {
@@ -97,23 +96,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     onReview: _openComplete,
                   ),
                 ),
-          bottomNavigationBar: SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.md),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
-              ),
-              child: FilledButton.icon(
-                onPressed: _uploading ? null : _pickAndImport,
-                icon: _uploading
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.photo_camera_outlined),
-                label: Text(_uploading ? 'Reading screenshot…' : 'Import from screenshot'),
-              ),
-            ),
-          ),
         );
       },
     );
