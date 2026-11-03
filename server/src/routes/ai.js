@@ -61,6 +61,7 @@ aiRouter.post('/import', async (req, res) => {
   );
 
   const extracted = await extractOrderFromImage(imageDataUrl || imageUrl);
+  extracted.items = await matchCatalogItems(req.business.id, extracted.items || []);
 
   const missingFields = [];
   if (!extracted.customerName && !extracted.customerPhone) {
@@ -323,6 +324,96 @@ async function extractOrderFromImage(imageData) {
 
   console.error('Gemini extraction failed for every model:', lastError?.message || lastError);
   return EMPTY_EXTRACTION;
+}
+
+/// Strips case, punctuation and spacing so "Adidas Sneakers" and "adidas
+/// sneaker" compare as the same words.
+function normalizeName(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function singular(word) {
+  return word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word;
+}
+
+export function nameScore(extractedName, productName) {
+  const a = normalizeName(extractedName);
+  const b = normalizeName(productName);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const aTokens = a.split(' ').map(singular);
+  const bTokens = b.split(' ').map(singular);
+
+  // Every extracted word appears in the product name ("adidas" -> "Adidas
+  // Sneakers"), which is the common case for a chat order.
+  const contained = aTokens.every((t) => bTokens.includes(t));
+  if (contained) return 0.9;
+
+  // The product name sits inside the extracted text.
+  if (a.includes(b) || b.includes(a)) return 0.85;
+
+  const overlap = aTokens.filter((t) => bTokens.includes(t)).length;
+  const ratio = overlap / Math.max(aTokens.length, bTokens.length);
+  return ratio >= 0.5 ? 0.5 + ratio / 2 : 0;
+}
+
+/// Matches extracted line items to the shop's own catalog so a known product
+/// brings its real price instead of a guessed or missing one.
+export async function matchCatalogItems(businessId, items) {
+  if (!items.length) return items;
+
+  const products = await queryAll(
+    'SELECT id, name, price_kobo, image_url, stock_quantity FROM products WHERE business_id = ? AND active = 1',
+    businessId
+  );
+  if (!products.length) {
+    return items.map((it) => ({
+      ...it,
+      product_id: null,
+      matched_name: null,
+      matched_price_kobo: null,
+      match_confidence: 0,
+    }));
+  }
+
+  return items.map((item) => {
+    let best = null;
+    let bestScore = 0;
+    for (const product of products) {
+      const score = nameScore(item.name, product.name);
+      if (score > bestScore) {
+        bestScore = score;
+        best = product;
+      }
+    }
+
+    if (!best || bestScore < 0.6) {
+      return {
+        ...item,
+        product_id: null,
+        matched_name: null,
+        matched_price_kobo: null,
+        match_confidence: Number(bestScore.toFixed(2)),
+      };
+    }
+
+    return {
+      ...item,
+      // The catalog is the source of truth for both the name and the price.
+      name: best.name,
+      product_id: best.id,
+      matched_name: best.name,
+      matched_price_kobo: best.price_kobo,
+      unit_price_kobo: best.price_kobo,
+      match_confidence: Number(bestScore.toFixed(2)),
+      stock_quantity: best.stock_quantity,
+    };
+  });
 }
 
 function formatImport(row) {

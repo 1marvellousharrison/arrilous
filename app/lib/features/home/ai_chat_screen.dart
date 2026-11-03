@@ -231,13 +231,20 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   final _fee = TextEditingController();
   final _discount = TextEditingController();
   bool _delivery = false;
+  bool _incomplete = false;
+  List<String> _missingFields = const [];
   final List<Map<String, dynamic>> _items = [];
 
   @override
   void initState() {
     super.initState();
+    // The catalog supplies the real price for an extracted product, so it has
+    // to be in memory before the lines can be checked against it.
+    if (!widget.catalog.loaded) widget.catalog.load();
     final imp = widget.ai.imports.where((e) => e.id == widget.importId).firstOrNull;
     if (imp != null) {
+      _incomplete = imp.missingFields.isNotEmpty;
+      _missingFields = imp.missingFields;
       _name.text = imp.customerName ?? '';
       _phone.text = imp.customerPhone ?? '';
       _address.text = imp.deliveryAddress ?? '';
@@ -253,10 +260,24 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Complete import')),
+      appBar: AppBar(title: Text(_incomplete ? 'Complete order' : 'Review order')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
+          if (_missingFields.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Still missing: ${_missingFields.map(_missingLabel).join(', ')}',
+                style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           Text('Required: Customer detail (name or phone)', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpacing.sm),
           TextField(controller: _name, decoration: const InputDecoration(labelText: 'Customer name')),
@@ -269,10 +290,20 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
             final it = entry.value;
             final price = (it['unit_price_kobo'] ?? it['unitPriceKobo'] ?? 0) as int;
             final qty = (it['quantity'] ?? 1) as int;
+            final productId = it['product_id']?.toString();
+            final matched = productId != null && productId.isNotEmpty;
             return ListTile(
               contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                matched ? Icons.check_circle : Icons.help_outline,
+                color: matched ? Colors.green : Theme.of(context).colorScheme.error,
+              ),
               title: Text(it['name']?.toString() ?? ''),
-              subtitle: Text('$qty × ${formatKobo(price)}'),
+              subtitle: Text(
+                matched
+                    ? '$qty × ${formatKobo(price)} · matched in your catalog'
+                    : '$qty × ${formatKobo(price)} · not in catalog, set the price',
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -312,6 +343,21 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
     );
   }
 
+  String _missingLabel(String field) {
+    switch (field) {
+      case 'customer_detail':
+        return 'customer name or phone';
+      case 'products':
+        return 'products';
+      case 'delivery_fee':
+        return 'delivery fee';
+      case 'delivery_address':
+        return 'delivery address';
+      default:
+        return field;
+    }
+  }
+
   int _subtotalKobo() {
     var total = 0;
     for (final it in _items) {
@@ -336,42 +382,115 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
               .toString(),
     );
     final qty = TextEditingController(text: (existing?['quantity'] ?? 1).toString());
+    final catalogProducts = widget.catalog.activeProducts;
+    final existingProductId = existing?['product_id']?.toString();
+    String? selectedProductId =
+        existingProductId == null || existingProductId.isEmpty ? null : existingProductId;
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(index == null ? 'Add line' : 'Edit line'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: name, decoration: const InputDecoration(labelText: 'Item name')),
-              TextField(controller: price, decoration: const InputDecoration(labelText: 'Unit price (naira)'), keyboardType: TextInputType.number),
-              TextField(controller: qty, decoration: const InputDecoration(labelText: 'Quantity'), keyboardType: TextInputType.number),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                final p = double.tryParse(price.text.replaceAll(',', '')) ?? 0;
-                final line = {
-                  'name': name.text.trim(),
-                  'quantity': int.tryParse(qty.text) ?? 1,
-                  'unit_price_kobo': (p * 100).round(),
-                };
-                setState(() {
-                  if (index == null) {
-                    _items.add(line);
-                  } else {
-                    _items[index] = line;
-                  }
-                });
-                Navigator.pop(context);
-              },
-              child: Text(index == null ? 'Add' : 'Save'),
-            ),
-          ],
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final selectedProduct = catalogProducts
+                .where((p) => p.id == selectedProductId)
+                .firstOrNull;
+
+            void chooseProduct(String? id) {
+              setDialogState(() {
+                selectedProductId = id;
+                final product = catalogProducts.where((p) => p.id == id).firstOrNull;
+                if (product != null) {
+                  // The catalog owns the name and the price once a product is
+                  // picked, so the two can never disagree.
+                  name.text = product.name;
+                  price.text = (product.priceKobo / 100).toString();
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: Text(index == null ? 'Add line' : 'Edit line'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String?>(
+                      key: ValueKey<String?>(selectedProductId),
+                      initialValue: selectedProductId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Catalog product'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Not in catalog (enter manually)'),
+                        ),
+                        ...catalogProducts.map(
+                          (p) => DropdownMenuItem<String?>(
+                            value: p.id,
+                            child: Text(
+                              '${p.name} · ${formatKobo(p.priceKobo)}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: chooseProduct,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    TextField(
+                      controller: name,
+                      readOnly: selectedProduct != null,
+                      decoration: const InputDecoration(labelText: 'Item name'),
+                    ),
+                    TextField(
+                      controller: price,
+                      readOnly: selectedProduct != null,
+                      decoration: InputDecoration(
+                        labelText: selectedProduct != null
+                            ? 'Unit price (from catalog)'
+                            : 'Unit price (naira)',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: qty,
+                      decoration: const InputDecoration(labelText: 'Quantity'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final p = selectedProduct != null
+                        ? selectedProduct.priceKobo / 100
+                        : (double.tryParse(price.text.replaceAll(',', '')) ?? 0);
+                    final line = <String, dynamic>{
+                      'name': name.text.trim(),
+                      'quantity': int.tryParse(qty.text) ?? 1,
+                      'unit_price_kobo': (p * 100).round(),
+                      'product_id': selectedProductId,
+                    };
+                    setState(() {
+                      if (index == null) {
+                        _items.add(line);
+                      } else {
+                        _items[index] = line;
+                      }
+                    });
+                    Navigator.pop(dialogContext);
+                  },
+                  child: Text(index == null ? 'Add' : 'Save'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
