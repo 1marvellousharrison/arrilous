@@ -650,34 +650,37 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
               ),
               child: SafeArea(
                 top: false,
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Text('Total', style: theme.textTheme.bodySmall),
-                          const SizedBox(width: AppSpacing.sm),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                formatKobo(_totalKobo()),
-                                maxLines: 1,
-                                softWrap: false,
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                              ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total', style: theme.textTheme.bodyMedium),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              formatKobo(_totalKobo()),
+                              maxLines: 1,
+                              softWrap: false,
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: AppSpacing.md),
-                    FilledButton(
-                      onPressed: _saving ? null : _submit,
-                      child: _saving
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Create sale'),
+                    const SizedBox(height: AppSpacing.sm),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _submit,
+                        icon: _saving
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.point_of_sale_outlined),
+                        label: Text(_saving ? 'Creating sale…' : 'Create sale'),
+                      ),
                     ),
                   ],
                 ),
