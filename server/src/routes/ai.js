@@ -1,9 +1,10 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { queryOne, queryAll, run } from '../db/index.js';
+import { queryOne, queryAll, run, transaction } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { recordCreation } from '../lib/history.js';
 import { config } from '../config.js';
 
 export const aiRouter = express.Router();
@@ -94,9 +95,11 @@ aiRouter.post('/import', async (req, res) => {
     importId
   );
 
+  const itemCount = (extracted.items || []).length;
+  const summary = itemCount === 1 ? '1 item' : `${itemCount} items`;
   const assistantMsg = missingFields.length > 0
-    ? `I've extracted what I could from the image. Some required details are missing:\n- ${missingFields.map(f => missingFieldLabel(f)).join('\n- ')}\n\nI've created an incomplete order draft. Please provide the missing details to complete it.`
-    : `I've extracted the order details from the image. Review and confirm to create the transaction.`;
+    ? `Extracted ${summary}. Still missing: ${missingFields.map(missingFieldLabel).join(', ')}.`
+    : `Extracted ${summary}. Review and confirm to create the order.`;
 
   await run(
     'INSERT INTO ai_chat_messages (id, business_id, user_id, order_import_id, role, message_type, content, metadata_json, created_at) VALUES (?, ?, ?, ?, \'assistant\', \'order_draft\', ?, ?, ?)',
@@ -115,19 +118,18 @@ aiRouter.post('/import', async (req, res) => {
   );
 
   if (missingFields.length > 0) {
-    for (const field of missingFields) {
-      const nid = crypto.randomUUID();
-      await run(
-        'INSERT INTO notifications (id, business_id, user_id, order_import_id, type, title, message, severity, created_at) VALUES (?, ?, ?, ?, \'order_import_incomplete\', ?, ?, \'warning\', ?)',
-        nid,
-        req.business.id,
-        req.auth.userId,
-        importId,
-        'Incomplete order from image',
-        `Missing required detail: ${missingFieldLabel(field)}. Order draft created but needs completion.`,
-        now()
-      );
-    }
+    // One notification per import, not one per missing field: a single order
+    // should not flood the bell.
+    await run(
+      'INSERT INTO notifications (id, business_id, user_id, order_import_id, type, title, message, severity, created_at) VALUES (?, ?, ?, ?, \'order_import_incomplete\', ?, ?, \'warning\', ?)',
+      crypto.randomUUID(),
+      req.business.id,
+      req.auth.userId,
+      importId,
+      'Order draft needs details',
+      `Missing: ${missingFields.map(missingFieldLabel).join(', ')}.`,
+      now()
+    );
   }
 
   const imp = await queryOne('SELECT * FROM order_imports WHERE id = ?', importId);
@@ -434,6 +436,128 @@ function formatImport(row) {
   };
 }
 
+function publicCustomerLite(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone ?? null,
+    address: row.address ?? null,
+  };
+}
+
+const HONORIFICS = new Set([
+  'mr', 'mrs', 'miss', 'ms', 'dr', 'chief', 'alhaji', 'alhaja', 'engr', 'sir', 'madam',
+]);
+
+/// "0803 731 1300", "+2348037311300" and "2348037311300" are the same phone.
+function normalizePhone(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('234') && digits.length >= 13) return `0${digits.slice(3)}`;
+  if (digits.length === 10) return `0${digits}`;
+  return digits;
+}
+
+/// The E.164 form the rest of the app stores ("+2348037311300"), so a customer
+/// created from a screenshot looks like one created from the customer screen.
+function toE164(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('234')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
+  return `+${digits}`;
+}
+
+/// Compares names without case, punctuation or honorifics, so "Mr Ben" and
+/// "ben" are the same customer while "Ben" and "Ben Okafor" stay distinct.
+function namesMatch(a, b) {
+  const tokens = (value) =>
+    normalizeName(value)
+      .split(' ')
+      .filter((token) => token && !HONORIFICS.has(token));
+  const left = tokens(a);
+  const right = tokens(b);
+  if (!left.length || !right.length) return false;
+  return left.join(' ') === right.join(' ');
+}
+
+/**
+ * Finds a customer the owner already saved. Phone wins over name because a
+ * number is unique in practice while two customers can share a name.
+ */
+export async function findExistingCustomer(businessId, { name, phone } = {}) {
+  const phoneKey = normalizePhone(phone);
+  const rows = await queryAll(
+    'SELECT id, name, phone, address FROM customers WHERE business_id = ?',
+    businessId
+  );
+
+  if (phoneKey) {
+    const byPhone = rows.find((row) => normalizePhone(row.phone) === phoneKey);
+    if (byPhone) return { customer: byPhone, matchedBy: 'phone' };
+  }
+  if (name) {
+    const byName = rows.find((row) => namesMatch(row.name, name));
+    if (byName) return { customer: byName, matchedBy: 'name' };
+  }
+  return { customer: null, matchedBy: null };
+}
+
+/**
+ * Reuses the saved customer when one matches and fills in whatever the
+ * screenshot did not show. Only blank fields are filled, so an import can
+ * never overwrite details the owner already typed.
+ */
+async function resolveCustomer(businessId, { name, phone, address }) {
+  const cleanName = (name ?? '').trim();
+  const cleanPhone = (phone ?? '').trim();
+  const cleanAddress = (address ?? '').trim();
+  const { customer, matchedBy } = await findExistingCustomer(businessId, {
+    name: cleanName,
+    phone: cleanPhone,
+  });
+
+  if (customer) {
+    const nextPhone = customer.phone || toE164(cleanPhone);
+    const nextAddress = customer.address || cleanAddress || null;
+    if ((!customer.phone && cleanPhone) || (!customer.address && cleanAddress)) {
+      await run(
+        'UPDATE customers SET phone = ?, address = ?, updated_at = ? WHERE id = ?',
+        nextPhone,
+        nextAddress,
+        now(),
+        customer.id
+      );
+    }
+    return {
+      id: customer.id,
+      name: customer.name,
+      phone: nextPhone,
+      address: nextAddress,
+      matchedBy,
+    };
+  }
+
+  const id = crypto.randomUUID();
+  const storedPhone = toE164(cleanPhone);
+  // customers.name is NOT NULL and at least two characters, so an order that
+  // only carried a phone number is stored under that number.
+  const fallback = cleanPhone || 'Walk-in customer';
+  const finalName = (cleanName.length >= 2 ? cleanName : fallback).slice(0, 160);
+  await run(
+    'INSERT INTO customers (id, business_id, name, phone, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    id,
+    businessId,
+    finalName,
+    storedPhone,
+    cleanAddress || null,
+    now(),
+    now()
+  );
+  return { id, name: finalName, phone: storedPhone, address: cleanAddress || null, matchedBy: null };
+}
+
 async function getRecentMessages(businessId) {
   const messages = await queryAll('SELECT * FROM ai_chat_messages WHERE business_id = ? ORDER BY created_at DESC LIMIT 50', businessId);
   return messages.reverse().map((m) => ({
@@ -452,43 +576,91 @@ aiRouter.get('/imports', async (req, res) => {
   res.json({ imports: imports.map(formatImport) });
 });
 
+aiRouter.get('/imports/:id', async (req, res) => {
+  const imp = await queryOne(
+    'SELECT * FROM order_imports WHERE id = ? AND business_id = ?',
+    req.params.id,
+    req.business.id
+  );
+  if (!imp) throw notFound('Import not found');
+
+  // The review screen uses this to pre-fill details the owner already saved.
+  const { customer, matchedBy } = await findExistingCustomer(req.business.id, {
+    name: imp.extracted_customer_name,
+    phone: imp.extracted_customer_phone,
+  });
+
+  res.json({
+    import: formatImport(imp),
+    customer: publicCustomerLite(customer),
+    matchedBy,
+  });
+});
+
+aiRouter.get('/customers/match', async (req, res) => {
+  const name = typeof req.query.name === 'string' ? req.query.name : '';
+  const phone = typeof req.query.phone === 'string' ? req.query.phone : '';
+  if (!name.trim() && !phone.trim()) {
+    return res.json({ customer: null, matchedBy: null });
+  }
+  const { customer, matchedBy } = await findExistingCustomer(req.business.id, { name, phone });
+  res.json({ customer: publicCustomerLite(customer), matchedBy });
+});
+
 aiRouter.post('/imports/:id/complete', async (req, res) => {
   const imp = await queryOne('SELECT * FROM order_imports WHERE id = ? AND business_id = ?', req.params.id, req.business.id);
   if (!imp) throw notFound('Import not found');
-
-  const { customer_id, customer_name, customer_phone, items, delivery_required, delivery_address, delivery_fee_kobo, discount_kobo = 0, notes } = req.body || {};
-
-  if ((!customer_id && !customer_name && !customer_phone)) {
-    throw badRequest('Customer detail (name or phone) is required.');
+  if (imp.transaction_id) {
+    throw badRequest('This order was already created.');
   }
-  if (!items || items.length === 0) {
-    throw badRequest('Product/amount details are required.');
+
+  const {
+    customer_id,
+    customer_name,
+    customer_phone,
+    items,
+    delivery_required,
+    delivery_address,
+    delivery_fee_kobo = 0,
+    discount_kobo = 0,
+    notes,
+  } = req.body || {};
+
+  if (!customer_id && !(customer_name ?? '').trim() && !(customer_phone ?? '').trim()) {
+    throw badRequest('Add the customer name or phone number.', [
+      { field: 'customer_name', message: 'A customer name or phone is required.' },
+    ]);
   }
-  if (delivery_required) {
-    if (!delivery_fee_kobo || delivery_fee_kobo <= 0) {
-      throw badRequest('Delivery fee is required when delivery is requested.');
-    }
-    if (!delivery_address) {
-      throw badRequest('Delivery address is required when delivery is requested.');
-    }
+  if (!Array.isArray(items) || items.length === 0) {
+    throw badRequest('Add at least one product to the order.', [
+      { field: 'items', message: 'The order has no items.' },
+    ]);
+  }
+  if (delivery_required && !(delivery_address ?? '').trim()) {
+    throw badRequest('Add the address this order should be delivered to.', [
+      { field: 'delivery_address', message: 'A delivery address is required.' },
+    ]);
   }
 
   const businessId = req.business.id;
-  let finalCustomerId = customer_id || null;
 
-  if (!finalCustomerId && (customer_name || customer_phone)) {
-    if (customer_phone) {
-      const existing = await queryOne('SELECT id FROM customers WHERE business_id = ? AND phone = ?', businessId, customer_phone);
-      if (existing) finalCustomerId = existing.id;
-    }
-    if (!finalCustomerId && customer_name) {
-      const custId = crypto.randomUUID();
-      await run(
-        'INSERT INTO customers (id, business_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        custId, businessId, customer_name, customer_phone || null, now(), now()
-      );
-      finalCustomerId = custId;
-    }
+  // A customer chosen on screen wins; otherwise the saved customer is reused
+  // when the name or phone matches, and created only when nothing matches.
+  let customer;
+  if (customer_id) {
+    const row = await queryOne(
+      'SELECT id, name, phone, address FROM customers WHERE id = ? AND business_id = ?',
+      customer_id,
+      businessId
+    );
+    if (!row) throw notFound('That customer does not exist.');
+    customer = { ...row, matchedBy: 'id' };
+  } else {
+    customer = await resolveCustomer(businessId, {
+      name: customer_name,
+      phone: customer_phone,
+      address: delivery_required ? delivery_address : null,
+    });
   }
 
   const resolvedItems = [];
@@ -525,44 +697,102 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
   if (resolvedItems.length === 0) throw badRequest('Valid items are required.');
 
   const subtotal = resolvedItems.reduce((s, i) => s + i.subtotalKobo, 0);
-  const fee = delivery_required ? (delivery_fee_kobo || 0) : 0;
-  const disc = discount_kobo || 0;
-  if (disc > subtotal) throw badRequest('Discount cannot exceed subtotal.');
+  const fee = delivery_required ? Math.round(Number(delivery_fee_kobo) || 0) : 0;
+  const disc = Math.round(Number(discount_kobo) || 0);
+  if (disc > subtotal) {
+    throw badRequest('The discount cannot be more than the subtotal.', [
+      { field: 'discount_kobo', message: 'Discount is larger than the items total.' },
+    ]);
+  }
   const total = subtotal + fee - disc;
 
   const year = new Date().getUTCFullYear();
   const count = await queryOne('SELECT COUNT(*) AS total FROM transactions WHERE business_id = ?', businessId);
   const txnNumber = `TXN-${year}-${String((count?.total ?? 0) + 1).padStart(5, '0')}`;
   const txnId = crypto.randomUUID();
+  const deliveryStatus = delivery_required ? 'pending' : 'not_required';
+  const createdAt = now();
 
-  await run(
-    'INSERT INTO transactions (id, business_id, customer_id, transaction_number, source, subtotal_kobo, discount_kobo, delivery_fee_kobo, total_kobo, notes, delivery_address, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, \'screenshot\', ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    txnId, businessId, finalCustomerId, txnNumber, subtotal, disc, fee, total, notes || null, delivery_address || null, req.auth.userId, now(), now()
-  );
-
-  for (const it of resolvedItems) {
+  await transaction(async () => {
     await run(
-      'INSERT INTO transaction_items (id, transaction_id, product_id, product_name_snapshot, image_url, quantity, unit_price_kobo, subtotal_kobo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      crypto.randomUUID(), txnId, it.productId, it.name, it.imageUrl, it.quantity, it.unitPriceKobo, it.subtotalKobo, now()
+      `INSERT INTO transactions
+         (id, business_id, customer_id, transaction_number, source, subtotal_kobo,
+          discount_kobo, delivery_fee_kobo, total_kobo, notes, delivery_required,
+          delivery_address, order_status, payment_status, delivery_status,
+          completion_status, created_by_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'screenshot', ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, 'open', ?, ?, ?)`,
+      txnId,
+      businessId,
+      customer.id,
+      txnNumber,
+      subtotal,
+      disc,
+      fee,
+      total,
+      notes || null,
+      delivery_required ? 1 : 0,
+      delivery_required ? delivery_address : null,
+      deliveryStatus,
+      req.auth.userId,
+      createdAt,
+      createdAt
     );
-  }
 
-  await run(
-    'INSERT INTO transaction_statuses (transaction_id, order_status, payment_status, delivery_status, completion_status) VALUES (?, \'pending\', \'unpaid\', ?, \'open\')',
-    txnId, delivery_required ? 'pending' : 'not_required'
-  );
+    for (const it of resolvedItems) {
+      await run(
+        `INSERT INTO transaction_items
+           (id, transaction_id, product_id, product_name_snapshot, image_url,
+            quantity, unit_price_kobo, subtotal_kobo, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        crypto.randomUUID(),
+        txnId,
+        it.productId,
+        it.name,
+        it.imageUrl,
+        it.quantity,
+        it.unitPriceKobo,
+        it.subtotalKobo,
+        createdAt
+      );
+    }
 
-  await run('UPDATE order_imports SET status = \'completed\', transaction_id = ?, updated_at = ? WHERE id = ?', txnId, now(), imp.id);
+    // The timeline opens with the sale, exactly as a manual transaction does.
+    await recordCreation({
+      transactionId: txnId,
+      businessId,
+      userId: req.auth.userId,
+      order: 'pending',
+      payment: 'unpaid',
+      delivery: deliveryStatus,
+      completion: 'open',
+    });
 
-  await run(
-    'INSERT INTO ai_chat_messages (id, business_id, user_id, order_import_id, role, message_type, content, metadata_json, created_at) VALUES (?, ?, ?, ?, \'assistant\', \'action\', ?, ?, ?)',
-    crypto.randomUUID(), req.business.id, req.auth.userId, imp.id,
-    'Order created from image import (incomplete details were filled in).',
-    JSON.stringify({ transactionId: txnId, incomplete: false }),
-    now()
-  );
+    await run(
+      'UPDATE order_imports SET status = \'completed\', transaction_id = ?, extracted_customer_id = ?, updated_at = ? WHERE id = ?',
+      txnId,
+      customer.id,
+      now(),
+      imp.id
+    );
 
-  res.json({ transactionId: txnId, message: 'Order created from import' });
+    await run(
+      'INSERT INTO ai_chat_messages (id, business_id, user_id, order_import_id, role, message_type, content, metadata_json, created_at) VALUES (?, ?, ?, ?, \'assistant\', \'action\', ?, ?, ?)',
+      crypto.randomUUID(),
+      req.business.id,
+      req.auth.userId,
+      imp.id,
+      `Order ${txnNumber} created.`,
+      JSON.stringify({ transactionId: txnId, incomplete: false, customerId: customer.id }),
+      now()
+    );
+  });
+
+  res.json({
+    transactionId: txnId,
+    transactionNumber: txnNumber,
+    customer: publicCustomerLite(customer),
+    message: 'Order created',
+  });
 });
 
 export default aiRouter;

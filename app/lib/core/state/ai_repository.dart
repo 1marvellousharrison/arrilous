@@ -61,6 +61,26 @@ class AiRepository extends ChangeNotifier {
     await loadChat();
     return data;
   }
+
+  /// Fresh import plus the saved customer it matches, if any. The review screen
+  /// uses this so a draft opened from history is never stale.
+  Future<Map<String, dynamic>> importDetail(String importId) async {
+    final data = await _api.get('/ai/imports/$importId', token: _token) as Map<String, dynamic>;
+    return data;
+  }
+
+  /// Finds a customer already saved by the business, by phone or by name.
+  Future<Map<String, dynamic>> matchCustomer({String? name, String? phone}) async {
+    if (_token == null) return const {'customer': null, 'matchedBy': null};
+    final query = <String, String>{};
+    final cleanName = (name ?? '').trim();
+    final cleanPhone = (phone ?? '').trim();
+    if (cleanName.isNotEmpty) query['name'] = cleanName;
+    if (cleanPhone.isNotEmpty) query['phone'] = cleanPhone;
+    if (query.isEmpty) return const {'customer': null, 'matchedBy': null};
+    final suffix = Uri(queryParameters: query).query;
+    return await _api.get('/ai/customers/match?$suffix', token: _token) as Map<String, dynamic>;
+  }
 }
 
 class AiMessage {
