@@ -98,6 +98,16 @@ describe('screenshot import - creating the order', () => {
     const imp = await queryOne('SELECT * FROM order_imports WHERE id = ?', importId);
     assert.equal(imp.status, 'completed');
     assert.equal(imp.transaction_id, txn.id);
+
+    const imports = await api('GET', '/ai/imports', { token: owner.token });
+    assert.equal(imports.status, 200, JSON.stringify(imports.body));
+    const completedImport = imports.body.imports.find((entry) => entry.id === importId);
+    assert.equal(completedImport.transactionId, txn.id);
+    assert.equal(completedImport.transactionNumber, txn.transaction_number);
+
+    const detail = await api('GET', `/ai/imports/${importId}`, { token: owner.token });
+    assert.equal(detail.status, 200, JSON.stringify(detail.body));
+    assert.equal(detail.body.import.transactionNumber, txn.transaction_number);
   });
 
   test('reuses a saved customer when the screenshot phone is formatted differently', async () => {

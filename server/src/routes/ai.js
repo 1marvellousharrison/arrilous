@@ -432,6 +432,7 @@ function formatImport(row) {
     discountKobo: row.discount_kobo,
     missingFields: row.missing_fields_json ? JSON.parse(row.missing_fields_json) : [],
     transactionId: row.transaction_id,
+    transactionNumber: row.transaction_number ?? null,
     createdAt: row.created_at,
   };
 }
@@ -572,13 +573,23 @@ async function getRecentMessages(businessId) {
 }
 
 aiRouter.get('/imports', async (req, res) => {
-  const imports = await queryAll('SELECT * FROM order_imports WHERE business_id = ? ORDER BY created_at DESC', req.business.id);
+  const imports = await queryAll(
+    `SELECT oi.*, t.transaction_number
+       FROM order_imports oi
+       LEFT JOIN transactions t ON t.id = oi.transaction_id
+      WHERE oi.business_id = ?
+      ORDER BY oi.created_at DESC`,
+    req.business.id
+  );
   res.json({ imports: imports.map(formatImport) });
 });
 
 aiRouter.get('/imports/:id', async (req, res) => {
   const imp = await queryOne(
-    'SELECT * FROM order_imports WHERE id = ? AND business_id = ?',
+    `SELECT oi.*, t.transaction_number
+       FROM order_imports oi
+       LEFT JOIN transactions t ON t.id = oi.transaction_id
+      WHERE oi.id = ? AND oi.business_id = ?`,
     req.params.id,
     req.business.id
   );

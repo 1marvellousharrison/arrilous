@@ -108,7 +108,7 @@ class AiMessage {
 }
 
 class OrderImport {
-  OrderImport({required this.id, required this.status, required this.missingFields, this.customerName, this.customerPhone, required this.items, this.deliveryRequired = false, this.deliveryAddress, this.deliveryFeeKobo, this.discountKobo, this.transactionId});
+  OrderImport({required this.id, required this.status, required this.missingFields, this.customerName, this.customerPhone, required this.items, this.deliveryRequired = false, this.deliveryAddress, this.deliveryFeeKobo, this.discountKobo, this.transactionId, this.transactionNumber});
 
   factory OrderImport.fromJson(Map<String, dynamic> json) {
     return OrderImport(
@@ -123,6 +123,7 @@ class OrderImport {
       deliveryFeeKobo: json['deliveryFeeKobo'] as int?,
       discountKobo: json['discountKobo'] as int?,
       transactionId: json['transactionId'] as String?,
+      transactionNumber: json['transactionNumber'] as String?,
     );
   }
 
@@ -137,4 +138,5 @@ class OrderImport {
   final int? deliveryFeeKobo;
   final int? discountKobo;
   final String? transactionId;
+  final String? transactionNumber;
 }

@@ -18,12 +18,14 @@ class AiChatScreen extends StatefulWidget {
     required this.ai,
     required this.catalog,
     required this.customers,
+    required this.onViewTransaction,
     super.key,
   });
 
   final AiRepository ai;
   final CatalogRepository catalog;
   final CustomerRepository customers;
+  final ValueChanged<String> onViewTransaction;
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -100,9 +102,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   itemBuilder: (context, i) => _MessageTile(
                     message: messages[i],
                     onReview: _openComplete,
-                    orderCreated: widget.ai.imports.any((imp) =>
-                        imp.id == messages[i].orderImportId &&
-                        (imp.status == 'completed' || imp.transactionId != null)),
+                    orderImport: widget.ai.imports.where((imp) => imp.id == messages[i].orderImportId).firstOrNull,
+                    onViewTransaction: widget.onViewTransaction,
                   ),
                 ),
         );
@@ -118,6 +119,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           catalog: widget.catalog,
           customers: widget.customers,
           importId: importId,
+          onViewTransaction: widget.onViewTransaction,
         ),
       ),
     );
@@ -145,11 +147,12 @@ class _EmptyChat extends StatelessWidget {
 }
 
 class _MessageTile extends StatelessWidget {
-  const _MessageTile({required this.message, required this.onReview, required this.orderCreated});
+  const _MessageTile({required this.message, required this.onReview, required this.orderImport, required this.onViewTransaction});
 
   final AiMessage message;
   final ValueChanged<String> onReview;
-  final bool orderCreated;
+  final OrderImport? orderImport;
+  final ValueChanged<String> onViewTransaction;
 
   @override
   Widget build(BuildContext context) {
@@ -177,7 +180,12 @@ class _MessageTile extends StatelessWidget {
     }
 
     if (message.messageType == 'order_draft') {
-      return _OrderDraftCard(message: message, onReview: onReview, orderCreated: orderCreated);
+      return _OrderDraftCard(
+        message: message,
+        onReview: onReview,
+        orderImport: orderImport,
+        onViewTransaction: onViewTransaction,
+      );
     }
 
     if (message.messageType == 'image' && message.metadata?['image'] != null) {
@@ -206,17 +214,19 @@ class _MessageTile extends StatelessWidget {
 }
 
 class _OrderDraftCard extends StatelessWidget {
-  const _OrderDraftCard({required this.message, required this.onReview, required this.orderCreated});
+  const _OrderDraftCard({required this.message, required this.onReview, required this.orderImport, required this.onViewTransaction});
 
   final AiMessage message;
   final ValueChanged<String> onReview;
-  final bool orderCreated;
+  final OrderImport? orderImport;
+  final ValueChanged<String> onViewTransaction;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final importId = message.orderImportId;
     final incomplete = message.metadata?['incomplete'] == true;
+    final orderCreated = orderImport?.status == 'completed' || orderImport?.transactionId != null;
     final statusColor = orderCreated
         ? theme.colorScheme.primary
         : incomplete
@@ -261,9 +271,28 @@ class _OrderDraftCard extends StatelessWidget {
                 children: [
                   Icon(Icons.check_circle, size: 18, color: statusColor),
                   const SizedBox(width: AppSpacing.sm),
-                  Text('Order created successfully', style: theme.textTheme.bodySmall),
+                  Expanded(
+                    child: Text(
+                      orderImport?.transactionNumber == null
+                          ? 'Order created successfully'
+                          : 'Order ${orderImport!.transactionNumber} created',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
                 ],
               ),
+              if (orderImport?.transactionId != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => onViewTransaction(orderImport!.transactionId!),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('View sale'),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  ),
+                ),
+              ],
             ] else if (importId != null) ...[
               const SizedBox(height: AppSpacing.sm),
               SizedBox(
@@ -425,6 +454,7 @@ class CompleteImportScreen extends StatefulWidget {
     required this.catalog,
     required this.customers,
     required this.importId,
+    required this.onViewTransaction,
     super.key,
   });
 
@@ -432,6 +462,7 @@ class CompleteImportScreen extends StatefulWidget {
   final CatalogRepository catalog;
   final CustomerRepository customers;
   final String importId;
+  final ValueChanged<String> onViewTransaction;
 
   @override
   State<CompleteImportScreen> createState() => _CompleteImportScreenState();
@@ -450,6 +481,8 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   bool _saving = false;
   bool _incomplete = false;
   bool _alreadyCreated = false;
+  String? _transactionId;
+  String? _transactionNumber;
   List<String> _missingFields = const [];
   String? _error;
   Map<String, dynamic>? _matchedCustomer;
@@ -499,6 +532,8 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
 
     if (imp != null) {
       _alreadyCreated = imp.status == 'completed' || imp.transactionId != null;
+      _transactionId = imp.transactionId;
+      _transactionNumber = imp.transactionNumber;
       _incomplete = !_alreadyCreated && imp.missingFields.isNotEmpty;
       _missingFields = imp.missingFields;
       _name.text = imp.customerName ?? '';
@@ -629,11 +664,23 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                         const SizedBox(height: AppSpacing.md),
                         Text('Sale created', style: theme.textTheme.headlineSmall),
                         const SizedBox(height: AppSpacing.xs),
+                        if (_transactionNumber != null) ...[
+                          Text('Order ${_transactionNumber!}', style: theme.textTheme.titleMedium),
+                          const SizedBox(height: AppSpacing.xs),
+                        ],
                         Text(
                           'This order has already been created and added to your sales.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
+                        if (_transactionId != null) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          OutlinedButton.icon(
+                            onPressed: () => widget.onViewTransaction(_transactionId!),
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('View sale details'),
+                          ),
+                        ],
                       ],
                     ),
                   ),

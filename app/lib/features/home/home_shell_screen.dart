@@ -328,7 +328,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onOpen: _openTransaction,
           onCreate: _newTransaction,
         ),
-      2 => AiChatScreen(ai: widget.ai, catalog: widget.catalog, customers: widget.customers),
+      2 => AiChatScreen(
+          ai: widget.ai,
+          catalog: widget.catalog,
+          customers: widget.customers,
+          onViewTransaction: _viewTransactionId,
+        ),
       3 => BusinessLogisticsScreen(business: widget.business, transactions: widget.transactions, logistics: widget.logistics),
       _ => _ProfileScreen(
           onOpenSettings: widget.onOpenSettings,
@@ -418,11 +423,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   void _openTransaction(Transaction transaction) {
+    _viewTransactionId(transaction.id);
+  }
+
+  void _viewTransactionId(String transactionId) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => TransactionDetailScreen(
           transactions: widget.transactions,
-          transactionId: transaction.id,
+          transactionId: transactionId,
           canChangeStatus: !_isStaff,
         ),
       ),
