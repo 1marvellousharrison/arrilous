@@ -31,6 +31,18 @@
 
   <title>Biziness — Your Business, Simplified</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Capture this before Flutter boots. The Dart install service consumes the
+    // saved event and can show the browser's native install confirmation.
+    window.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      window.bizinessDeferredInstallPrompt = event;
+      window.dispatchEvent(new Event('bizinessinstallprompt'));
+    });
+    window.addEventListener('appinstalled', function () {
+      try { window.localStorage.setItem('biziness_pwa_installed', 'true'); } catch (_) {}
+    });
+  </script>
 </head>
 <body>
   <!--

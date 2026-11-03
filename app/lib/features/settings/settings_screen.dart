@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../core/api/api_client.dart';
+import '../../core/pwa/pwa_install_service.dart';
 import '../../core/state/auth_repository.dart';
 import '../../core/state/theme_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pwa_install_prompt.dart';
 
 /// Settings screen (spec section 37).
 ///
@@ -115,6 +118,44 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (kIsWeb) ...[
+            const SizedBox(height: AppSpacing.xl),
+            const _SectionLabel('App'),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: ListenableBuilder(
+                listenable: PwaInstallService.instance,
+                builder: (context, _) {
+                  final install = PwaInstallService.instance;
+                  install.initialize();
+                  final installed = install.isInstalled;
+                  return ListTile(
+                    leading: Icon(
+                      installed ? Icons.check_circle_outline : Icons.install_mobile_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(installed ? 'Biziness is installed' : 'Install Biziness'),
+                    subtitle: Text(installed
+                        ? 'You can open it from your device’s apps.'
+                        : 'Add Biziness to your device for quick access.'),
+                    trailing: installed
+                        ? const StatusPill(label: 'Installed', color: AppColors.success)
+                        : const Icon(Icons.chevron_right),
+                    onTap: installed
+                        ? null
+                        : () async {
+                            if (install.canPrompt) {
+                              final prompted = await install.promptInstall();
+                              if (prompted || !context.mounted || install.isInstalled) return;
+                            }
+                            if (!context.mounted) return;
+                            await showInstallInstructions(context, isIos: install.isIos);
+                          },
+                  );
+                },
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.xl),
           _SectionLabel('Account'),
           AppCard(
