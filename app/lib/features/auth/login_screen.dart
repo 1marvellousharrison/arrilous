@@ -31,10 +31,11 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _identifier = TextEditingController();
   final _password = TextEditingController();
+  late final AnimationController _createAccountAnimation;
 
   bool _obscure = true;
   bool _rememberMe = true;
@@ -46,6 +47,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _createAccountAnimation = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
     _prefillRemembered();
   }
 
@@ -65,6 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _createAccountAnimation.dispose();
     _identifier.dispose();
     _password.dispose();
     super.dispose();
@@ -311,7 +317,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         TextButton(
                           onPressed: _busy ? null : widget.onCreateAccount,
-                          child: const Text('Create account'),
+                          child: AnimatedBuilder(
+                            animation: _createAccountAnimation,
+                            builder: (context, _) {
+                              final shift = -1.2 + (_createAccountAnimation.value * 2.4);
+                              return ShaderMask(
+                                blendMode: BlendMode.srcIn,
+                                shaderCallback: (bounds) => LinearGradient(
+                                  begin: Alignment(shift, 0),
+                                  end: Alignment(shift + 2.4, 0),
+                                  colors: [
+                                    theme.colorScheme.primary,
+                                    AppColors.orangeRedLight,
+                                    theme.colorScheme.primary,
+                                  ],
+                                ).createShader(bounds),
+                                child: const Text(
+                                  'Create account',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
