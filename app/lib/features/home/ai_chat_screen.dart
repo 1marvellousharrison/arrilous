@@ -50,8 +50,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (!mounted) return;
       if (res != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Image uploaded. Order draft created from import.')),
+          const SnackBar(content: Text('Details extracted. Check them and confirm.')),
         );
+        final importId = (res['import'] as Map<String, dynamic>?)?['id'] as String?;
+        if (importId != null) {
+          await _openComplete(importId);
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -174,11 +178,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
                                       ),
                                     ),
                                   ],
-                                  if (m.metadata?['incomplete'] == true && m.orderImportId != null) ...[
+                                  if (m.messageType == 'order_draft' && m.orderImportId != null) ...[
                                     const SizedBox(height: AppSpacing.sm),
                                     FilledButton(
                                       onPressed: () => _openComplete(m.orderImportId!),
-                                      child: const Text('Complete order details'),
+                                      child: Text(
+                                        m.metadata?['incomplete'] == true
+                                            ? 'Complete order details'
+                                            : 'Review & confirm order',
+                                      ),
                                     ),
                                   ],
                                 ],
@@ -256,8 +264,38 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
           TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Customer phone')),
           const SizedBox(height: AppSpacing.lg),
           Text('Required: Product/amount', style: Theme.of(context).textTheme.titleSmall),
-          ..._items.map((it) => ListTile(title: Text(it['name']?.toString() ?? ''), subtitle: Text(formatKobo((it['unit_price_kobo'] ?? it['unitPriceKobo'] ?? 0) as int)))),
+          ..._items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final it = entry.value;
+            final price = (it['unit_price_kobo'] ?? it['unitPriceKobo'] ?? 0) as int;
+            final qty = (it['quantity'] ?? 1) as int;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(it['name']?.toString() ?? ''),
+              subtitle: Text('$qty × ${formatKobo(price)}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Edit line',
+                    onPressed: () => _editItem(index),
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove line',
+                    onPressed: () => setState(() => _items.removeAt(index)),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+                ],
+              ),
+            );
+          }),
           FilledButton.tonal(onPressed: _addItem, child: const Text('Add product/line')),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Subtotal ${formatKobo(_subtotalKobo())}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
           const SizedBox(height: AppSpacing.lg),
           SwitchListTile(value: _delivery, onChanged: (v) => setState(() => _delivery = v), title: const Text('Delivery required')),
           if (_delivery) ...[
@@ -274,15 +312,36 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
     );
   }
 
-  void _addItem() {
+  int _subtotalKobo() {
+    var total = 0;
+    for (final it in _items) {
+      final price = (it['unit_price_kobo'] ?? it['unitPriceKobo'] ?? 0) as int;
+      final qty = (it['quantity'] ?? 1) as int;
+      total += price * qty;
+    }
+    return total;
+  }
+
+  void _addItem() => _itemDialog();
+
+  void _editItem(int index) => _itemDialog(index: index);
+
+  void _itemDialog({int? index}) {
+    final existing = index == null ? null : _items[index];
+    final name = TextEditingController(text: existing?['name']?.toString() ?? '');
+    final price = TextEditingController(
+      text: existing == null
+          ? ''
+          : (((existing['unit_price_kobo'] ?? existing['unitPriceKobo'] ?? 0) as int) / 100)
+              .toString(),
+    );
+    final qty = TextEditingController(text: (existing?['quantity'] ?? 1).toString());
+
     showDialog(
       context: context,
       builder: (context) {
-        final name = TextEditingController();
-        final price = TextEditingController();
-        final qty = TextEditingController(text: '1');
         return AlertDialog(
-          title: const Text('Add line'),
+          title: Text(index == null ? 'Add line' : 'Edit line'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -296,14 +355,21 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
             FilledButton(
               onPressed: () {
                 final p = double.tryParse(price.text.replaceAll(',', '')) ?? 0;
-                setState(() => _items.add({
-                  'name': name.text,
+                final line = {
+                  'name': name.text.trim(),
                   'quantity': int.tryParse(qty.text) ?? 1,
                   'unit_price_kobo': (p * 100).round(),
-                }));
+                };
+                setState(() {
+                  if (index == null) {
+                    _items.add(line);
+                  } else {
+                    _items[index] = line;
+                  }
+                });
                 Navigator.pop(context);
               },
-              child: const Text('Add'),
+              child: Text(index == null ? 'Add' : 'Save'),
             ),
           ],
         );

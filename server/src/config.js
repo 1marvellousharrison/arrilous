@@ -161,7 +161,7 @@ export const config = {
     notifications: { provider: process.env.NOTIFICATION_PROVIDER ?? null },
     gemini: {
       apiKey: process.env.GEMINI_API_KEY ?? null,
-      model: process.env.GEMINI_MODEL ?? 'gemini-3.8-flash',
+      model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
     },
   },
 };

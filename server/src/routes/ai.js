@@ -1,6 +1,5 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { GoogleGenAI } from '@google/genai';
 import { queryOne, queryAll, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
@@ -183,123 +182,147 @@ function toKoboFromPrice(price) {
   return Math.round(num * 100);
 }
 
-async function extractOrderFromImage(imageData) {
-  const apiKey = config.integrations?.gemini?.apiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return {
-      customerName: null,
-      customerPhone: null,
-      items: [],
-      deliveryRequired: false,
-      deliveryAddress: null,
-      deliveryFeeKobo: null,
-      discountKobo: 0,
-      notes: null,
-    };
-  }
+const EMPTY_EXTRACTION = {
+  customerName: null,
+  customerPhone: null,
+  items: [],
+  deliveryRequired: false,
+  deliveryAddress: null,
+  deliveryFeeKobo: null,
+  discountKobo: 0,
+  totalKobo: null,
+  notes: null,
+};
 
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const model = config.integrations?.gemini?.model || 'gemini-3.8-flash';
-    const prompt = `You are an expert at parsing Nigerian/order screenshots (receipts, WhatsApp orders, invoices). 
-Parse the image and output STRICTLY VALID JSON with NO markdown, NO code fences, NO extra text.
-Return ONLY this JSON structure:
+const EXTRACTION_PROMPT = `You are an expert at reading Nigerian order screenshots: WhatsApp chats, receipts, invoices and handwritten order slips.
+
+Return STRICTLY VALID JSON only. No markdown, no code fences, no commentary.
+
 {
   "customerName": "string or null",
   "phoneNumber": "string or null",
   "deliveryAddress": "string or null",
+  "wantsDelivery": true or false,
+  "discount": number or null,
   "items": [
-    {
-      "name": "string",
-      "quantity": 1,
-      "price": 0.00
-    }
+    { "name": "string", "quantity": 1, "price": number or null }
   ],
-  "totalAmount": 0.00
+  "totalAmount": number or null
 }
 
 Rules:
-- Extract customer name and phone number if present.
-- Extract delivery address if present (look for "Delivery to", address, state/city).
-- Extract all items with names, quantities (default 1 if missing), and prices (unit price per item as shown).
-- totalAmount should be the final total if visible.
-- Use null for missing string fields, numbers as numbers.
-- Do not invent items.`;
+- customerName: the buyer's name ("Mr Ben", "Chinedu", etc.). Never the shop name.
+- phoneNumber: any Nigerian phone number, keep every digit (e.g. "08037311300").
+- deliveryAddress: only a real street/area/city address. If the text only says delivery is wanted, leave null and set wantsDelivery true.
+- wantsDelivery: true whenever the order mentions delivery, dispatch, rider, "send am", "bring it", "wants delivery", or gives an address.
+- discount: the discount amount in naira if the order mentions one ("Discount of 2000" -> 2000). Otherwise null.
+- items: every product mentioned. "2 adidas" -> name "adidas", quantity 2. Quantity defaults to 1. price is the unit price ONLY when a price is actually written; if no price appears use null, never 0.
+- totalAmount: the final total in naira only when written. Otherwise null.
+- Never invent values. Use null for anything not visible.`;
 
-    const contents = [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: imageData.startsWith('data:image/png') ? 'image/png' : imageData.startsWith('data:image/jpeg') || imageData.startsWith('data:image/jpg') ? 'image/jpeg' : 'image/png',
-              data: imageData.includes(',') ? imageData.split(',')[1] : imageData,
-            },
-          },
-        ],
-      },
-    ];
-
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-    });
-
-    const text = response?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || response?.text || '';
-    const parsed = parseGeminiJson(text);
-    if (!parsed) {
-      return {
-        customerName: null,
-        customerPhone: null,
-        items: [],
-        deliveryRequired: false,
-        deliveryAddress: null,
-        deliveryFeeKobo: null,
-        discountKobo: 0,
-        notes: null,
-      };
-    }
-
-    const items = Array.isArray(parsed.items)
-      ? parsed.items
-          .map((it) => {
-            const qty = Number(it.quantity) || 1;
-            const priceKobo = toKoboFromPrice(it.price);
-            return {
-              name: it.name || it.productName || null,
-              quantity: qty,
-              unit_price_kobo: priceKobo,
-              product_id: null,
-            };
-          })
-          .filter((it) => it.name)
-      : [];
-
-    const deliveryRequired = !!parsed.deliveryAddress;
-    return {
-      customerName: parsed.customerName || null,
-      customerPhone: parsed.phoneNumber || parsed.phone || parsed.customerPhone || null,
-      items,
-      deliveryRequired,
-      deliveryAddress: parsed.deliveryAddress || null,
-      deliveryFeeKobo: parsed.deliveryFeeKobo ? toKoboFromPrice(parsed.deliveryFeeKobo) : null,
-      discountKobo: 0,
-      notes: parsed.notes || null,
-    };
-  } catch (e) {
-    console.error('Gemini extraction failed:', e?.message || e);
-    return {
-      customerName: null,
-      customerPhone: null,
-      items: [],
-      deliveryRequired: false,
-      deliveryAddress: null,
-      deliveryFeeKobo: null,
-      discountKobo: 0,
-      notes: null,
-    };
+async function callGeminiRest(apiKey, model, imageDataUrl) {
+  const mimeType = imageDataUrl.startsWith('data:image/png')
+    ? 'image/png'
+    : imageDataUrl.startsWith('data:image/webp')
+      ? 'image/webp'
+      : 'image/jpeg';
+  const data = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: EXTRACTION_PROMPT }, { inlineData: { mimeType, data } }],
+        },
+      ],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  const text = await res.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`Gemini returned non-JSON (${res.status})`);
   }
+  if (!res.ok || payload.error) {
+    const err = new Error(payload?.error?.message || `Gemini HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return (payload.candidates?.[0]?.content?.parts || [])
+    .map((p) => p.text)
+    .join('');
+}
+
+async function extractOrderFromImage(imageData) {
+  const apiKey = config.integrations?.gemini?.apiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn('GEMINI_API_KEY is not set; screenshot extraction is disabled.');
+    return EMPTY_EXTRACTION;
+  }
+
+  // Newer models are retired for new keys without notice, so try a chain.
+  const configured = config.integrations?.gemini?.model;
+  const models = [
+    configured,
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ].filter((m, i, all) => m && all.indexOf(m) === i);
+
+  let lastError = null;
+  for (const model of models) {
+    try {
+      const text = await callGeminiRest(apiKey, model, imageData);
+      const parsed = parseGeminiJson(text);
+      if (!parsed) {
+        lastError = new Error(`Gemini (${model}) returned unparsable JSON`);
+        continue;
+      }
+
+      const items = Array.isArray(parsed.items)
+        ? parsed.items
+            .map((it) => ({
+              name: it.name || it.productName || null,
+              quantity: Number(it.quantity) || 1,
+              unit_price_kobo: toKoboFromPrice(it.price),
+              product_id: null,
+            }))
+            .filter((it) => it.name)
+        : [];
+
+      const wantsDelivery =
+        parsed.wantsDelivery === true ||
+        parsed.deliveryRequired === true ||
+        !!parsed.deliveryAddress;
+
+      return {
+        customerName: parsed.customerName || null,
+        customerPhone:
+          parsed.phoneNumber || parsed.phone || parsed.customerPhone || null,
+        items,
+        deliveryRequired: wantsDelivery,
+        deliveryAddress: parsed.deliveryAddress || null,
+        deliveryFeeKobo: toKoboFromPrice(parsed.deliveryFee),
+        discountKobo: toKoboFromPrice(parsed.discount) || 0,
+        totalKobo: toKoboFromPrice(parsed.totalAmount),
+        notes: parsed.notes || null,
+      };
+    } catch (e) {
+      lastError = e;
+      console.warn(`Gemini extraction with ${model} failed:`, e?.message || e);
+    }
+  }
+
+  console.error('Gemini extraction failed for every model:', lastError?.message || lastError);
+  return EMPTY_EXTRACTION;
 }
 
 function formatImport(row) {
@@ -391,14 +414,19 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
           subtotalKobo: product.price_kobo * (it.quantity || 1),
         });
       }
-    } else if (it.name && it.unit_price_kobo) {
+    } else if (it.name) {
+      // A line may arrive without a price when the screenshot did not show
+      // one. Keep it so the owner can price it during review instead of losing
+      // the product from the draft.
+      const unitPriceKobo = Number(it.unit_price_kobo ?? it.unitPriceKobo ?? 0) || 0;
+      const quantity = Number(it.quantity) || 1;
       resolvedItems.push({
         productId: null,
         name: it.name,
         imageUrl: null,
-        unitPriceKobo: it.unit_price_kobo,
-        quantity: it.quantity || 1,
-        subtotalKobo: it.unit_price_kobo * (it.quantity || 1),
+        unitPriceKobo,
+        quantity,
+        subtotalKobo: unitPriceKobo * quantity,
       });
     }
   }
