@@ -100,6 +100,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   itemBuilder: (context, i) => _MessageTile(
                     message: messages[i],
                     onReview: _openComplete,
+                    orderCreated: widget.ai.imports.any((imp) =>
+                        imp.id == messages[i].orderImportId &&
+                        (imp.status == 'completed' || imp.transactionId != null)),
                   ),
                 ),
         );
@@ -142,10 +145,11 @@ class _EmptyChat extends StatelessWidget {
 }
 
 class _MessageTile extends StatelessWidget {
-  const _MessageTile({required this.message, required this.onReview});
+  const _MessageTile({required this.message, required this.onReview, required this.orderCreated});
 
   final AiMessage message;
   final ValueChanged<String> onReview;
+  final bool orderCreated;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +177,7 @@ class _MessageTile extends StatelessWidget {
     }
 
     if (message.messageType == 'order_draft') {
-      return _OrderDraftCard(message: message, onReview: onReview);
+      return _OrderDraftCard(message: message, onReview: onReview, orderCreated: orderCreated);
     }
 
     if (message.messageType == 'image' && message.metadata?['image'] != null) {
@@ -202,17 +206,22 @@ class _MessageTile extends StatelessWidget {
 }
 
 class _OrderDraftCard extends StatelessWidget {
-  const _OrderDraftCard({required this.message, required this.onReview});
+  const _OrderDraftCard({required this.message, required this.onReview, required this.orderCreated});
 
   final AiMessage message;
   final ValueChanged<String> onReview;
+  final bool orderCreated;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final importId = message.orderImportId;
     final incomplete = message.metadata?['incomplete'] == true;
-    final statusColor = incomplete ? theme.colorScheme.error : theme.colorScheme.primary;
+    final statusColor = orderCreated
+        ? theme.colorScheme.primary
+        : incomplete
+            ? theme.colorScheme.error
+            : theme.colorScheme.primary;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -231,10 +240,10 @@ class _OrderDraftCard extends StatelessWidget {
                 Icon(Icons.receipt_long_outlined, size: 18, color: statusColor),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: Text('Order draft', style: theme.textTheme.titleSmall),
+                 child: Text(orderCreated ? 'Order' : 'Order draft', style: theme.textTheme.titleSmall),
                 ),
                 StatusPill(
-                  label: incomplete ? 'Needs details' : 'Ready',
+                  label: orderCreated ? 'Created' : incomplete ? 'Needs details' : 'Ready',
                   color: statusColor,
                 ),
               ],
@@ -246,7 +255,16 @@ class _OrderDraftCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-            if (importId != null) ...[
+            if (orderCreated) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Icon(Icons.check_circle, size: 18, color: statusColor),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('Order created successfully', style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ] else if (importId != null) ...[
               const SizedBox(height: AppSpacing.sm),
               SizedBox(
                 width: double.infinity,
@@ -431,6 +449,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _incomplete = false;
+  bool _alreadyCreated = false;
   List<String> _missingFields = const [];
   String? _error;
   Map<String, dynamic>? _matchedCustomer;
@@ -479,7 +498,8 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
     if (!mounted) return;
 
     if (imp != null) {
-      _incomplete = imp.missingFields.isNotEmpty;
+      _alreadyCreated = imp.status == 'completed' || imp.transactionId != null;
+      _incomplete = !_alreadyCreated && imp.missingFields.isNotEmpty;
       _missingFields = imp.missingFields;
       _name.text = imp.customerName ?? '';
       _phone.text = imp.customerPhone ?? '';
@@ -598,6 +618,26 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
       appBar: AppBar(title: Text(_incomplete ? 'Complete order' : 'Review order')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _alreadyCreated
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle, size: 56, color: theme.colorScheme.primary),
+                        const SizedBox(height: AppSpacing.md),
+                        Text('Sale created', style: theme.textTheme.headlineSmall),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'This order has already been created and added to your sales.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
           : ListView(
               padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xl),
               children: [
@@ -640,7 +680,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: _loading
+      bottomNavigationBar: _loading || _alreadyCreated
           ? null
           : Container(
               padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
