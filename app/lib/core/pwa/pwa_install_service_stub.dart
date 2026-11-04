@@ -8,10 +8,12 @@ class PwaInstallService extends ChangeNotifier {
   static final PwaInstallService instance = PwaInstallService._();
 
   bool get isInstalled => false;
+  bool get dismissedThisLoad => false;
   bool get canPrompt => false;
   bool get isIos => false;
 
   void initialize() {}
+  void dismissForThisLoad() {}
 
   Future<bool> promptInstall() async => false;
 }

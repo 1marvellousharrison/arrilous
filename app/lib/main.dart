@@ -23,7 +23,6 @@ import 'features/auth/signup_screen.dart';
 import 'features/auth/verify_otp_screen.dart';
 import 'features/home/home_shell_screen.dart';
 import 'features/settings/settings_screen.dart';
-import 'widgets/pwa_install_prompt.dart';
 
 const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
 
@@ -126,9 +125,6 @@ class _BizinessAppState extends State<BizinessApp> {
           themeMode: _theme.mode,
           theme: buildLightTheme(),
           darkTheme: buildDarkTheme(),
-          builder: (context, child) => PwaInstallPrompt(
-            child: child ?? const SizedBox.shrink(),
-          ),
           home: _booting
               ? const _SplashScreen()
               : _Root(

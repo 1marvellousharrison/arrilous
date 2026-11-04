@@ -26,6 +26,7 @@ import '../transactions/transactions_screen.dart';
 import '../logistics/business_logistics_screen.dart';
 import '../logistics/delivery_requests_list_screen.dart';
 import '../logistics/notifications_screen.dart';
+import '../../widgets/pwa_install_prompt.dart';
 import 'ai_chat_screen.dart';
 import 'app_notifications_screen.dart';
 import '../wallet/wallet_screen.dart';
@@ -309,19 +310,21 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
   Widget _tabs() {
     return switch (_index) {
-      0 => DashboardScreen(
-          dashboard: widget.dashboard,
-          business: widget.business,
-          transactions: widget.transactions,
-          catalog: widget.catalog,
-          customers: widget.customers,
-          onOpenTransaction: _openTransaction,
-          onManualEntry: _manualTransaction,
-          onSeeAllTransactions: () => _onTab(1),
-          onAddProduct: _addProduct,
-          onAddCustomer: _addCustomer,
-          onGoToAiChat: () => _onTab(2),
-          canAddProduct: !_isStaff,
+      0 => PwaInstallPrompt(
+          child: DashboardScreen(
+            dashboard: widget.dashboard,
+            business: widget.business,
+            transactions: widget.transactions,
+            catalog: widget.catalog,
+            customers: widget.customers,
+            onOpenTransaction: _openTransaction,
+            onManualEntry: _manualTransaction,
+            onSeeAllTransactions: () => _onTab(1),
+            onAddProduct: _addProduct,
+            onAddCustomer: _addCustomer,
+            onGoToAiChat: () => _onTab(2),
+            canAddProduct: !_isStaff,
+          ),
         ),
       1 => TransactionsScreen(
           transactions: widget.transactions,

@@ -6,9 +6,8 @@ import 'package:flutter/material.dart';
 import '../core/pwa/pwa_install_service.dart';
 import '../core/theme/app_theme.dart';
 
-/// Optional web-only install nudge. Dismissal lives only in widget memory, so
-/// it returns on the next page load. Installation itself is remembered by the
-/// browser service and permanently suppresses the nudge on this device.
+/// Compact web-only install nudge, mounted only on the Home tab. Dismissal is
+/// remembered in memory until reload; installation is remembered per device.
 class PwaInstallPrompt extends StatefulWidget {
   const PwaInstallPrompt({required this.child, super.key});
 
@@ -21,7 +20,6 @@ class PwaInstallPrompt extends StatefulWidget {
 class _PwaInstallPromptState extends State<PwaInstallPrompt> {
   final _install = PwaInstallService.instance;
   Timer? _showTimer;
-  bool _dismissed = false;
 
   @override
   void initState() {
@@ -45,7 +43,7 @@ class _PwaInstallPromptState extends State<PwaInstallPrompt> {
     return AnimatedBuilder(
       animation: _install,
       builder: (context, _) {
-        final show = !_dismissed && !_install.isInstalled && _showTimer?.isActive == false;
+        final show = !_install.dismissedThisLoad && !_install.isInstalled && _showTimer?.isActive == false;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -54,7 +52,7 @@ class _PwaInstallPromptState extends State<PwaInstallPrompt> {
               Positioned(
                 left: AppSpacing.md,
                 right: AppSpacing.md,
-                bottom: 88,
+                bottom: AppSpacing.sm,
                 child: SafeArea(
                   top: false,
                   child: Align(
@@ -62,7 +60,7 @@ class _PwaInstallPromptState extends State<PwaInstallPrompt> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 440),
                       child: _InstallCard(
-                        onDismiss: () => setState(() => _dismissed = true),
+                        onDismiss: _install.dismissForThisLoad,
                         onInstall: () async {
                           if (_install.canPrompt) {
                             final launched = await _install.promptInstall();
@@ -96,34 +94,48 @@ class _InstallCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Material(
-      elevation: 10,
+      elevation: 5,
       color: theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.sm, AppSpacing.xs, AppSpacing.xs, AppSpacing.xs),
         child: Row(
           children: [
-            Icon(Icons.install_mobile_outlined, color: theme.colorScheme.primary, size: 26),
-            const SizedBox(width: AppSpacing.md),
+            Icon(Icons.install_mobile_outlined, color: theme.colorScheme.primary, size: 20),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Install Biziness', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 2),
+                  Text('Install Biziness', style: theme.textTheme.labelLarge),
                   Text(
-                    'Add it to your device for quick access.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    'Add to your device for quick access',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
             ),
-            TextButton(onPressed: onDismiss, child: const Text('Later')),
-            const SizedBox(width: AppSpacing.xs),
-            FilledButton(
+            TextButton(
               onPressed: onInstall,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                minimumSize: const Size(48, 36),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              ),
               child: const Text('Install'),
+            ),
+            IconButton(
+              tooltip: 'Dismiss',
+              visualDensity: VisualDensity.compact,
+              onPressed: onDismiss,
+              icon: const Icon(Icons.close, size: 18),
             ),
           ],
         ),

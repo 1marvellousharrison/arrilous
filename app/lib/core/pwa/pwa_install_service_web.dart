@@ -31,7 +31,9 @@ class PwaInstallService extends ChangeNotifier {
   Object? _deferredPrompt;
   bool _initialized = false;
   bool _installed = false;
+  bool _dismissedThisLoad = false;
   bool get isInstalled => _installed || _isStandalone;
+  bool get dismissedThisLoad => _dismissedThisLoad;
   bool get canPrompt => _deferredPrompt != null;
   bool get isIos => web.window.navigator.userAgent.toLowerCase().contains('iphone') ||
       web.window.navigator.userAgent.toLowerCase().contains('ipad');
@@ -62,6 +64,11 @@ class PwaInstallService extends ChangeNotifier {
     web.window.addEventListener('appinstalled', ((web.Event _) {
       _markInstalled();
     }).toJS);
+  }
+
+  void dismissForThisLoad() {
+    _dismissedThisLoad = true;
+    notifyListeners();
   }
 
   Future<bool> promptInstall() async {
