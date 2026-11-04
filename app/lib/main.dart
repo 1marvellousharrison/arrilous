@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, ValueNotifier;
 import 'package:flutter/material.dart';
 
 import 'core/api/api_client.dart';
@@ -89,6 +89,10 @@ class _BizinessAppState extends State<BizinessApp> {
 
   bool _booting = true;
 
+  /// Filled when a staff member activates their code from the create-account
+  /// page, so the login form can show the code they just created.
+  final ValueNotifier<String?> _activatedStaffCode = ValueNotifier(null);
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +105,7 @@ class _BizinessAppState extends State<BizinessApp> {
       repository.dispose();
     }
     _api.close();
+    _activatedStaffCode.dispose();
     super.dispose();
   }
 
@@ -140,6 +145,7 @@ class _BizinessAppState extends State<BizinessApp> {
                   staff: _staff,
                   ai: _ai,
                   appNotifications: _appNotifications,
+                  activatedStaffCode: _activatedStaffCode,
                   onSignedOut: _clearScopedState,
                 ),
         );
@@ -225,6 +231,7 @@ class _Root extends StatelessWidget {
     required this.staff,
     required this.ai,
     required this.appNotifications,
+    required this.activatedStaffCode,
     required this.onSignedOut,
   });
 
@@ -240,6 +247,7 @@ class _Root extends StatelessWidget {
   final StaffRepository staff;
   final AiRepository ai;
   final AppNotificationsRepository appNotifications;
+  final ValueNotifier<String?> activatedStaffCode;
   final VoidCallback onSignedOut;
 
   @override
@@ -262,7 +270,7 @@ class _Root extends StatelessWidget {
               identifier: identifier,
               purpose: 'login_verification',
             ),
-            onActivateStaff: () => _activateStaff(context),
+            activatedStaffCode: activatedStaffCode,
           );
         }
 
@@ -324,15 +332,20 @@ class _Root extends StatelessWidget {
     );
   }
 
-  void _openSignUp(BuildContext context) {    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+  Future<void> _openSignUp(BuildContext context) async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
         builder: (_) => SignUpFlow(
           auth: auth,
           onBack: () => Navigator.of(context).pop(),
           onSignedIn: (_) {},
+          onActivateStaff: () => _activateStaff(context),
         ),
       ),
     );
+    if (code == null || code.isEmpty) return;
+    await auth.rememberIdentifier(code);
+    activatedStaffCode.value = code;
   }
 
   Future<void> _startPasswordReset(

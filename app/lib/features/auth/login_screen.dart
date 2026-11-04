@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
     super.key,
     this.onForgotPassword,
     this.onUseCode,
-    this.onActivateStaff,
+    this.activatedStaffCode,
   });
 
   final AuthRepository auth;
@@ -23,9 +23,9 @@ class LoginScreen extends StatefulWidget {
   final ValueChanged<String>? onForgotPassword;
   final ValueChanged<String>? onUseCode;
 
-  /// Opens staff activation and, when it succeeds, returns the staff code so
-  /// the form can be filled with it ready to sign in.
-  final Future<String?> Function()? onActivateStaff;
+  /// Set after a staff member activates their code from the create-account
+  /// page. The login form fills the code in so they only need a password.
+  final ValueNotifier<String?>? activatedStaffCode;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -51,7 +51,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       vsync: this,
       duration: const Duration(milliseconds: 950),
     )..repeat();
+    widget.activatedStaffCode?.addListener(_applyActivatedStaffCode);
     _prefillRemembered();
+  }
+
+  /// Activation happens from the create-account page, which sits above this
+  /// screen. When it finishes, the staff code is handed back here and filled
+  /// in so the new staff member only has to enter their password.
+  void _applyActivatedStaffCode() {
+    final code = widget.activatedStaffCode?.value;
+    if (!mounted || code == null || code.isEmpty) return;
+    setState(() {
+      _identifier.text = code;
+      _error = null;
+      _identifierError = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Account activated. Sign in with your new password.'),
+      ),
+    );
   }
 
   /// "Remember me" is on by default, so the last identifier is waiting in the
@@ -70,6 +89,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    widget.activatedStaffCode?.removeListener(_applyActivatedStaffCode);
     _createAccountAnimation.dispose();
     _identifier.dispose();
     _password.dispose();
@@ -294,16 +314,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           : () => _showNotAvailable('Apple sign-in'),
                     ),
                     const SizedBox(height: AppSpacing.xl),
-                    if (widget.onActivateStaff != null) ...[
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: _busy ? null : _activateStaff,
-                          icon: const Icon(Icons.badge_outlined, size: 18),
-                          label: const Text('Have a staff code? Activate it'),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                    ],
                     Wrap(
                       alignment: WrapAlignment.center,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -358,22 +368,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _activateStaff() async {
-    final code = await widget.onActivateStaff?.call();
-    if (!mounted || code == null || code.isEmpty) return;
-    setState(() {
-      _identifier.text = code;
-      _error = null;
-      _identifierError = null;
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Account activated. Sign in with your new password.'),
       ),
     );
   }

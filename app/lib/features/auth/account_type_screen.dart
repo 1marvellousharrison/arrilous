@@ -9,10 +9,15 @@ class AccountTypeScreen extends StatelessWidget {
     required this.onSelected,
     required this.onBack,
     super.key,
+    this.onActivateStaff,
   });
 
   final ValueChanged<String> onSelected;
   final VoidCallback onBack;
+
+  /// Opens staff activation. When it succeeds the flow closes back to login
+  /// with the staff code filled in.
+  final Future<String?> Function()? onActivateStaff;
 
   static const _options = [
     AccountTypeOption(
@@ -70,6 +75,16 @@ class AccountTypeScreen extends StatelessWidget {
                 onTap: () => onSelected(option.role),
               ),
               const SizedBox(height: AppSpacing.md),
+            ],
+            if (onActivateStaff != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () => onActivateStaff?.call(),
+                  icon: const Icon(Icons.badge_outlined, size: 18),
+                  label: const Text('Have a staff code? Activate it'),
+                ),
+              ),
             ],
           ],
         ),

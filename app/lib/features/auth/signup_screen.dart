@@ -219,16 +219,30 @@ class SignUpFlow extends StatelessWidget {
     required this.onSignedIn,
     required this.onBack,
     super.key,
+    this.onActivateStaff,
   });
 
   final AuthRepository auth;
   final ValueChanged<AuthUser> onSignedIn;
   final VoidCallback onBack;
 
+  /// Opens staff activation from the create-account page. The activated code
+  /// is returned to the caller so login can prefill it.
+  final Future<String?> Function()? onActivateStaff;
+
   @override
   Widget build(BuildContext context) {
     return AccountTypeScreen(
       onBack: onBack,
+      onActivateStaff: onActivateStaff == null
+          ? null
+          : () async {
+              final code = await onActivateStaff!.call();
+              if (code != null && code.isNotEmpty && context.mounted) {
+                Navigator.of(context).pop(code);
+              }
+              return code;
+            },
       onSelected: (role) {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
