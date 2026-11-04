@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:dee_app/core/api/api_client.dart';
+import 'package:dee_app/core/state/ai_repository.dart';
+import 'package:dee_app/core/state/app_notifications_repository.dart';
 import 'package:dee_app/core/state/auth_repository.dart';
 import 'package:dee_app/core/state/business_repository.dart';
 import 'package:dee_app/core/state/catalog_repository.dart';
@@ -505,6 +507,11 @@ void main() {
             logistics: LogisticsRepository(api, auth),
             wallet: WalletRepository(api, auth),
             staff: StaffRepository(api, auth),
+            ai: AiRepository(api: api, token: auth.session?.accessToken),
+            appNotifications: AppNotificationsRepository(
+              api: api,
+              token: auth.session?.accessToken,
+            ),
             onOpenSettings: () {},
             onSignOut: () async {},
           ),

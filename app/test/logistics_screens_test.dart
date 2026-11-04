@@ -249,8 +249,8 @@ void main() {
       expect(find.text('Manual Entry'), findsOneWidget);
       expect(find.text('WhatsApp AI'), findsOneWidget, reason: 'visible but inactive');
       expect(find.text('Screenshot / Photo'), findsOneWidget, reason: 'visible but inactive');
-      expect(find.text('Available'), findsOneWidget);
-      expect(find.text('Coming soon'), findsNWidgets(2));
+      expect(find.text('Available'), findsNWidgets(2));
+      expect(find.text('Coming soon'), findsOneWidget);
     });
 
     testWidgets('the inactive methods explain themselves instead of failing silently', (tester) async {
@@ -1467,6 +1467,23 @@ void main() {
       final expand = find.byKey(const ValueKey('status-pill-expand'));
       expect(tester.widget<SizeTransition>(expand).sizeFactor.value, 0, reason: 'collapsed until told otherwise');
       expect(tester.widget<Icon>(find.byIcon(Icons.bolt)).color, AppColors.success, reason: 'green while live');
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.radar_outlined)).color,
+        AppColors.success,
+        reason: 'the Active tab follows the live state',
+      );
+
+      // The bolt beats once every 30 seconds while the account is active.
+      final pulse = find.byKey(const ValueKey('status-bolt-pulse'));
+      expect(tester.widget<ScaleTransition>(pulse).scale.value, 1.0);
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        tester.widget<ScaleTransition>(pulse).scale.value,
+        greaterThan(1.0),
+        reason: 'the active lightning grows briefly every 30 seconds',
+      );
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.bolt));
       await tester.pump();
@@ -1582,6 +1599,9 @@ void main() {
       await tester.ensureVisible(find.text('Create rider profile'));
       await tester.tap(find.text('Create rider profile'));
       await tester.pumpAndSettle();
+
+      expect(find.text('Profile created'), findsOneWidget, reason: 'onboarding points at the remaining setup');
+      expect(find.text('Complete setup'), findsOneWidget);
 
       final profilePost = log.firstWhere(
         (request) => request.method == 'POST' && request.url.path.endsWith('/logistics/rider'),

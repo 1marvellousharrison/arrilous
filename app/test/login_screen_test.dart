@@ -55,7 +55,10 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // The Create account text carries a continuous shimmer, so settle a few
+    // frames instead of waiting for all animations to stop.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
   }
 
   setUp(() {
@@ -99,7 +102,8 @@ void main() {
     await tester.enterText(fields.at(1), 'Str0ngPass!23');
 
     await tester.tap(find.text('Log in'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(await repo.rememberedIdentifier(), 'ada@example.com');
   });
@@ -119,7 +123,8 @@ void main() {
     await tester.enterText(fields.at(1), 'Str0ngPass!23');
 
     await tester.tap(find.text('Log in'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(await repo.rememberedIdentifier(), isNull);
   });

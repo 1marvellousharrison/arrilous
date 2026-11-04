@@ -68,14 +68,42 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
   static const Duration _refreshEvery = Duration(seconds: 12);
   Timer? _autoRefresh;
 
+  /// The first load decides whether this account has a profile yet. Until it
+  /// finishes we show a spinner, never the setup form, so an existing rider or
+  /// partner goes straight to their dashboard on sign-in instead of flashing
+  /// the one-time onboarding page.
+  bool _initialLoadDone = false;
+  bool _initialLoadFailed = false;
+  bool _setupPromptShown = false;
+
   @override
   void initState() {
     super.initState();
-    widget.logistics.load();
+    _loadInitial();
     _autoRefresh = Timer.periodic(_refreshEvery, (_) {
       if (!mounted) return;
       widget.logistics.load();
     });
+  }
+
+  Future<void> _loadInitial() async {
+    await widget.logistics.load();
+    if (!mounted) return;
+    setState(() {
+      _initialLoadDone = true;
+      _initialLoadFailed = _profile == null && widget.logistics.error != null;
+    });
+  }
+
+  Map<String, dynamic>? get _profile =>
+      _isRider ? widget.logistics.rider : widget.logistics.organization;
+
+  Future<void> _retryInitialLoad() async {
+    setState(() {
+      _initialLoadDone = false;
+      _initialLoadFailed = false;
+    });
+    await _loadInitial();
   }
 
   @override
@@ -91,6 +119,7 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
       builder: (context, _) {
         final repository = widget.logistics;
         final profile = _isRider ? repository.rider : repository.organization;
+        final available = profile?['isAvailable'] as bool? ?? false;
         return Scaffold(
           appBar: AppBar(
             title: Text(_isRider ? 'Rider workspace' : 'Logistics workspace'),
@@ -116,24 +145,38 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
                 ),
             ],
           ),
-          body: profile == null
-              ? _setup(repository)
-              : switch (_tab) {
-                  0 => _homeTab(repository),
-                  1 => _activeTab(repository),
-                  2 => _historyTab(repository),
-                  _ => _setupTab(repository),
-                },
+          body: !_initialLoadDone
+              ? const Center(child: CircularProgressIndicator())
+              : profile == null
+                  ? (_initialLoadFailed
+                      ? _loadFailed(repository)
+                      : _setup(repository))
+                  : switch (_tab) {
+                      0 => _homeTab(repository),
+                      1 => _activeTab(repository),
+                      2 => _historyTab(repository),
+                      _ => _setupTab(repository),
+                    },
           bottomNavigationBar: profile == null
               ? null
               : NavigationBar(
                   selectedIndex: _tab,
                   onDestinationSelected: (index) => setState(() => _tab = index),
-                  destinations: const [
-                    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-                    NavigationDestination(icon: Icon(Icons.radar_outlined), selectedIcon: Icon(Icons.radar), label: 'Active'),
-                    NavigationDestination(icon: Icon(Icons.history), label: 'History'),
-                    NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Setup'),
+                  destinations: [
+                    const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+                    NavigationDestination(
+                      icon: Icon(
+                        Icons.radar_outlined,
+                        color: available ? AppColors.success : null,
+                      ),
+                      selectedIcon: Icon(
+                        Icons.radar,
+                        color: available ? AppColors.success : null,
+                      ),
+                      label: 'Active',
+                    ),
+                    const NavigationDestination(icon: Icon(Icons.history), label: 'History'),
+                    const NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Setup'),
                   ],
                 ),
         );
@@ -151,7 +194,66 @@ class _LogisticsWorkspaceScreenState extends State<LogisticsWorkspaceScreen> {
       repository: repository,
       isRider: _isRider,
       defaultName: widget.user.fullName,
+      onCreated: _onProfileCreated,
     );
+  }
+
+  /// A first load that failed is not the same as an account without a profile.
+  /// Retry instead of dropping the user back into onboarding.
+  Widget _loadFailed(LogisticsRepository repository) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined, size: 48),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              repository.error ?? 'Could not load your workspace.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            FilledButton.icon(
+              onPressed: _retryInitialLoad,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The profile form is only the first half of onboarding. Once it is saved,
+  /// point the rider or partner at Setup (modes/areas for a rider, fleet and
+  /// pricing for an organization) — once, right after sign-up.
+  Future<void> _onProfileCreated() async {
+    if (!mounted || _setupPromptShown) return;
+    _setupPromptShown = true;
+    final complete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Profile created'),
+        content: Text(
+          _isRider
+              ? 'One more step: add your mode of transport and area pricing so businesses can find and match you.'
+              : 'One more step: add your fleet, service areas and pricing so businesses can find and match you.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Complete setup'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || complete != true) return;
+    setState(() => _tab = 3);
   }
 
   Widget _scroll(LogisticsRepository repository, List<Widget> children) {
@@ -1408,8 +1510,9 @@ class _AvailabilityIndicator extends StatefulWidget {
   State<_AvailabilityIndicator> createState() => _AvailabilityIndicatorState();
 }
 
-class _AvailabilityIndicatorState extends State<_AvailabilityIndicator> with SingleTickerProviderStateMixin {
+class _AvailabilityIndicatorState extends State<_AvailabilityIndicator> with TickerProviderStateMixin {
   static const _hold = Duration(seconds: 3);
+  static const _pulseEvery = Duration(seconds: 30);
 
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -1422,10 +1525,57 @@ class _AvailabilityIndicatorState extends State<_AvailabilityIndicator> with Sin
   );
   Timer? _holdTimer;
 
+  /// A short heartbeat on the lightning every 30 seconds while the account is
+  /// active. It grows to 140% and settles back under a second, so "on duty" is
+  /// visible even when nobody is looking directly at the status pill.
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 850),
+  );
+  late final Animation<double> _pulseScale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 1.4).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 45,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 1.4, end: 1.0).chain(CurveTween(curve: Curves.easeInCubic)),
+      weight: 55,
+    ),
+  ]).animate(_pulseController);
+  Timer? _pulseTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncPulse(initial: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AvailabilityIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.available != widget.available) {
+      _syncPulse(initial: false);
+    }
+  }
+
+  void _syncPulse({required bool initial}) {
+    _pulseTimer?.cancel();
+    if (!widget.available) {
+      _pulseController.value = 0;
+      return;
+    }
+    if (!initial) _pulseController.forward(from: 0);
+    _pulseTimer = Timer.periodic(_pulseEvery, (_) {
+      if (mounted) _pulseController.forward(from: 0);
+    });
+  }
+
   @override
   void dispose() {
     _holdTimer?.cancel();
+    _pulseTimer?.cancel();
     _controller.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -1454,14 +1604,18 @@ class _AvailabilityIndicatorState extends State<_AvailabilityIndicator> with Sin
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(AppRadius.pill),
+            ScaleTransition(
+              key: const ValueKey('status-bolt-pulse'),
+              scale: _pulseScale,
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Icon(Icons.bolt, size: 18, color: color),
               ),
-              child: Icon(Icons.bolt, size: 18, color: color),
             ),
             ClipRect(
               child: SizeTransition(
@@ -1502,11 +1656,16 @@ class _LogisticsSetupForm extends StatefulWidget {
     required this.repository,
     required this.isRider,
     required this.defaultName,
+    this.onCreated,
   });
 
   final LogisticsRepository repository;
   final bool isRider;
   final String defaultName;
+
+  /// Fires once the profile exists so the workspace can prompt for the rest of
+  /// onboarding (modes and pricing) and open the Setup tab.
+  final VoidCallback? onCreated;
 
   @override
   State<_LogisticsSetupForm> createState() => _LogisticsSetupFormState();
@@ -1570,21 +1729,38 @@ class _LogisticsSetupFormState extends State<_LogisticsSetupForm> {
         category: _categories.join(', '),
         description: _description.text.trim(),
       );
-      if (_city != null && _city!.trim().isNotEmpty) {
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    } on NetworkException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
+    // The profile now exists, so the workspace is about to replace this form
+    // with the dashboard. Prompt for the remaining setup before that happens.
+    widget.onCreated?.call();
+
+    if (_city != null && _city!.trim().isNotEmpty) {
+      try {
         await widget.repository.addServiceArea(
           city: _city!.trim(),
           area: _area.text.trim(),
           state: _state?.trim() ?? '',
           country: 'Nigeria',
         );
-      }
-    } on ApiException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
-      }
-    } on NetworkException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      } on ApiException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+        }
+      } on NetworkException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+        }
       }
     }
   }

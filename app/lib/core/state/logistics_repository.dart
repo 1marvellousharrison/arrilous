@@ -334,4 +334,22 @@ Future<void> createProfile({
     });
     await load();
   }
+
+  /// Drops the previous account's logistics data on sign-out so a new rider or
+  /// partner never sees a stale profile while their own first load is running.
+  void reset() {
+    organization = null;
+    rider = null;
+    organizationDetails = null;
+    riderDetails = null;
+    requests = const [];
+    providers = const [];
+    riders = const [];
+    myRiders = const [];
+    organizationEarnings = null;
+    riderEarnings = null;
+    error = null;
+    loading = false;
+    notifyListeners();
+  }
 }

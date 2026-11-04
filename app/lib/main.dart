@@ -160,7 +160,7 @@ class _BizinessAppState extends State<BizinessApp> {
     _customers.reset();
     _transactions.reset();
     _dashboard.reset();
-    _logistics.requests = const [];
+    _logistics.reset();
     _wallet.reset();
     _staff.reset();
   }

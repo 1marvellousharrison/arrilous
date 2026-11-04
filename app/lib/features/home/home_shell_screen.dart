@@ -28,7 +28,6 @@ import '../logistics/delivery_requests_list_screen.dart';
 import '../logistics/notifications_screen.dart';
 import '../../widgets/pwa_install_prompt.dart';
 import 'ai_chat_screen.dart';
-import 'app_notifications_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -479,19 +478,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   Future<void> _openStaff() => Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
       builder: (_) => StaffScreen(staff: widget.staff),
-    ),
-  );
-}
-
-class _ComingSoonScreen extends StatelessWidget {
-  const _ComingSoonScreen();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: EmptyState(
-      icon: Icons.auto_awesome_outlined,
-      title: 'AI order creation is coming soon',
-      message: 'WhatsApp and screenshot orders will become drafts for your review before they can be confirmed.',
     ),
   );
 }
