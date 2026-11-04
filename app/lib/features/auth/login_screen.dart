@@ -49,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.initState();
     _createAccountAnimation = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 950),
     )..repeat();
     _prefillRemembered();
   }
@@ -335,12 +335,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                           AppColors.orangeRedLight,
                                         ]
                                       : const [
-                                          AppColors.orangeRedDark,
-                                          AppColors.orangeRedLight,
-                                          AppColors.orangeRed,
-                                          AppColors.orangeRedDark,
+                                          Color(0xFF7A1F00),
+                                          Color(0xFFB52E00),
+                                          Color(0xFFE06A00),
+                                          Color(0xFF8C2500),
                                         ],
-                                  stops: const [0, 0.32, 0.68, 1],
+                                  stops: const [0, 0.28, 0.62, 1],
                                 ).createShader(bounds),
                                 child: const Text(
                                   'Create account',
