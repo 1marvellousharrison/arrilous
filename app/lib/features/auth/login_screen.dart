@@ -49,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.initState();
     _createAccountAnimation = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2200),
     )..repeat();
     _prefillRemembered();
   }
@@ -320,17 +320,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           child: AnimatedBuilder(
                             animation: _createAccountAnimation,
                             builder: (context, _) {
-                              final shift = -1.2 + (_createAccountAnimation.value * 2.4);
+                              final shift = -1.4 + (_createAccountAnimation.value * 2.8);
+                              final isDark = theme.brightness == Brightness.dark;
                               return ShaderMask(
                                 blendMode: BlendMode.srcIn,
                                 shaderCallback: (bounds) => LinearGradient(
                                   begin: Alignment(shift, 0),
                                   end: Alignment(shift + 2.4, 0),
-                                  colors: [
-                                    theme.colorScheme.primary,
-                                    AppColors.orangeRedLight,
-                                    theme.colorScheme.primary,
-                                  ],
+                                  colors: isDark
+                                      ? const [
+                                          AppColors.orangeRedLight,
+                                          Color(0xFFFFC078),
+                                          Color(0xFFFF5B35),
+                                          AppColors.orangeRedLight,
+                                        ]
+                                      : const [
+                                          AppColors.orangeRedDark,
+                                          AppColors.orangeRedLight,
+                                          AppColors.orangeRed,
+                                          AppColors.orangeRedDark,
+                                        ],
+                                  stops: const [0, 0.32, 0.68, 1],
                                 ).createShader(bounds),
                                 child: const Text(
                                   'Create account',
