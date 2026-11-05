@@ -174,7 +174,22 @@ class _StaffTile extends StatelessWidget {
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                         ),
                       ),
-                      const SizedBox(width: AppSpacing.md),
+                      // Copyable from the list too, and still copyable once the
+                      // staff member has activated the code.
+                      IconButton(
+                        tooltip: 'Copy code',
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: member.staffCode));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Code copied.')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 14),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
                       Flexible(
                         child: Text(
                           member.salesCount == 1

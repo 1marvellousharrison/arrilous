@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/staff_repository.dart';
@@ -91,6 +92,13 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
     }
   }
 
+  void _copyCode() {
+    Clipboard.setData(ClipboardData(text: _member.staffCode));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Code copied.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -150,13 +158,29 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    _member.staffCode,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      color: theme.colorScheme.primary,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _member.staffCode,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      // The code stays copyable after activation, so the owner
+                      // can hand it over again without remembering it.
+                      TextButton.icon(
+                        onPressed: _copyCode,
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(

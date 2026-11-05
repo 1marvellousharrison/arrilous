@@ -17,6 +17,7 @@ import 'package:dee_app/features/home/home_shell_screen.dart';
 import 'package:dee_app/features/staff/staff_detail_screen.dart';
 import 'package:dee_app/features/staff/staff_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -117,6 +118,26 @@ void main() {
     );
     await auth.signIn(identifier: 'ada@example.com', password: 'Str0ngPass!23');
     return (auth, StaffRepository(api, auth));
+  }
+
+  /// Captures whatever the app puts on the clipboard, so a copy action can be
+  /// asserted without a real platform channel.
+  List<String> mockClipboard(WidgetTester tester) {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    return copied;
   }
 
   setUp(() {
@@ -375,6 +396,27 @@ void main() {
       expect(find.text('Active'), findsOneWidget);
     });
 
+    testWidgets('copies an activated staff code from the list', (tester) async {
+      final clipboard = mockClipboard(tester);
+      final (_, staff) = await signedInStaff((request) async {
+        if (request.url.path.endsWith('/auth/login')) return json(sessionBody());
+        return json({
+          'staff': [
+            staffJson(status: 'active', sales: 2),
+          ],
+        });
+      });
+
+      await tester.pumpWidget(MaterialApp(home: StaffScreen(staff: staff)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Copy code'));
+      await tester.pumpAndSettle();
+
+      expect(clipboard, ['ABC47-03']);
+      expect(find.text('Code copied.'), findsOneWidget);
+    });
+
     testWidgets('an empty list explains what staff are for', (tester) async {
       final (_, staff) = await signedInStaff((request) async {
         if (request.url.path.endsWith('/auth/login')) return json(sessionBody());
@@ -447,6 +489,37 @@ void main() {
 
       expect(find.text('Enable staff'), findsOneWidget);
       expect(find.text('Musa Bello is now disabled.'), findsOneWidget);
+    });
+
+    testWidgets('copies the code after the staff has activated', (tester) async {
+      tester.view.physicalSize = const Size(1000, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final clipboard = mockClipboard(tester);
+      final (_, staff) = await signedInStaff((request) async {
+        if (request.url.path.endsWith('/auth/login')) return json(sessionBody());
+        if (request.url.path.endsWith('/transactions')) {
+          return json({'transactions': <Object>[]});
+        }
+        return json({'staff': staffJson(status: 'active', activated: true)});
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StaffDetailScreen(
+            staff: staff,
+            member: StaffMember.fromJson(staffJson(status: 'active', activated: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Copy'));
+      await tester.pumpAndSettle();
+
+      expect(clipboard, ['ABC47-03']);
+      expect(find.text('Code copied.'), findsOneWidget);
     });
   });
 
