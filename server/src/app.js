@@ -44,6 +44,9 @@ export async function createApp({ migrate = true } = {}) {
       status: database === 'up' ? 'ok' : 'degraded',
       service: 'dee-api',
       version: '0.1.0',
+      // Render stamps the deployed commit; this makes it obvious whether the
+      // API behind the app is the build the client expects.
+      commit: process.env.RENDER_GIT_COMMIT ?? null,
       database,
       env: config.env,
       timestamp: new Date().toISOString(),

@@ -130,6 +130,11 @@ class AiRepository extends ChangeNotifier {
   /// transaction exists, so a recorded order can never be lost this way.
   Future<void> deleteImport(String importId) async {
     await _api.delete('/ai/imports/$importId', token: _token);
+    // Drop it locally first: the server has already deleted it, so the card
+    // must not linger if the follow-up refresh is slow or fails.
+    imports = imports.where((imp) => imp.id != importId).toList();
+    messages = messages.where((message) => message.orderImportId != importId).toList();
+    notifyListeners();
     await loadAll();
   }
 

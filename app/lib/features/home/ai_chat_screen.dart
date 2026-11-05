@@ -36,7 +36,9 @@ class AiChatScreen extends StatefulWidget {
 class _AiChatScreenState extends State<AiChatScreen> {
   final _picker = ImagePicker();
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
   bool _uploading = false;
+  bool _searching = false;
   String _query = '';
 
   @override
@@ -48,7 +50,26 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _openSearch() {
+    setState(() => _searching = true);
+  }
+
+  void _clearSearch() {
+    _search.clear();
+    setState(() => _query = '');
+  }
+
+  void _closeSearch() {
+    _searchFocus.unfocus();
+    _search.clear();
+    setState(() {
+      _query = '';
+      _searching = false;
+    });
   }
 
   Future<void> _pickAndImport() async {
@@ -175,8 +196,40 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('AI / Chats'),
+            title: _searching
+                ? TextField(
+                    controller: _search,
+                    focusNode: _searchFocus,
+                    autofocus: true,
+                    onChanged: (value) => setState(() => _query = value),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Search chats',
+                      border: InputBorder.none,
+                      isDense: true,
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: _clearSearch,
+                              icon: const Icon(Icons.clear, size: 18),
+                            ),
+                    ),
+                  )
+                : const Text('AI / Chats'),
             actions: [
+              if (_searching)
+                IconButton(
+                  tooltip: 'Close search',
+                  onPressed: _closeSearch,
+                  icon: const Icon(Icons.close),
+                )
+              else
+                IconButton(
+                  tooltip: 'Search chats',
+                  onPressed: _openSearch,
+                  icon: const Icon(Icons.search),
+                ),
               IconButton(
                 tooltip: 'Import from screenshot or photo',
                 onPressed: _uploading ? null : _pickAndImport,
@@ -192,44 +245,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
           body: Column(
             children: [
-              _searchBar(),
               if (_uploading) const _ReadingBanner(),
               Expanded(child: _body(messages, filtered, query)),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _searchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-      child: TextField(
-        controller: _search,
-        onChanged: (value) => setState(() => _query = value),
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'Search customer, phone, item or order no.',
-          prefixIcon: const Icon(Icons.search, size: 20),
-          suffixIcon: _query.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: 'Clear search',
-                  onPressed: () {
-                    _search.clear();
-                    setState(() => _query = '');
-                  },
-                  icon: const Icon(Icons.close, size: 18),
-                ),
-          isDense: true,
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
     );
   }
 
@@ -796,6 +817,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
   bool _delivery = false;
   bool _loading = true;
   bool _saving = false;
+  bool _deleting = false;
   bool _incomplete = false;
   bool _alreadyCreated = false;
   String? _transactionId;
@@ -976,11 +998,72 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
     _incomplete = missing.isNotEmpty;
   }
 
+  Future<void> _deleteDraft() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this draft?'),
+        content: const Text(
+          'The uploaded image and everything read from it will be removed. '
+          'Orders that have already become sales cannot be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      await widget.ai.deleteImport(widget.importId);
+      if (!mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Draft deleted.')));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = e.message;
+      });
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = e.message;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(_incomplete ? 'Complete order' : 'Review order')),
+      appBar: AppBar(
+        title: Text(_incomplete ? 'Complete order' : 'Review order'),
+        actions: [
+          // A draft that has not become a sale can be thrown away from here,
+          // where the upload lands, without going back to the chat first.
+          if (!_loading && !_alreadyCreated)
+            IconButton(
+              tooltip: 'Delete draft',
+              onPressed: _saving || _deleting ? null : _deleteDraft,
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _alreadyCreated
@@ -1092,7 +1175,7 @@ class _CompleteImportScreenState extends State<CompleteImportScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: _saving ? null : _submit,
+                        onPressed: _saving || _deleting ? null : _submit,
                         icon: _saving
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.point_of_sale_outlined),

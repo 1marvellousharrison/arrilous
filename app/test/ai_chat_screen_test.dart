@@ -125,7 +125,10 @@ void main() {
 
     final list = tester.widget<ListView>(find.byType(ListView).first);
     expect(list.reverse, isTrue, reason: 'the chat opens at the last message, not the first');
+    expect(find.byType(TextField), findsNothing, reason: 'search stays behind an icon until opened');
 
+    await tester.tap(find.byTooltip('Search chats'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'adidas');
     await tester.pumpAndSettle();
     expect(find.text('2 results for “adidas”'), findsOneWidget);
@@ -156,6 +159,50 @@ void main() {
     await pumpChat(tester, client);
 
     await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete this draft?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isTrue);
+    expect(find.text('Draft deleted.'), findsOneWidget);
+    expect(find.text('Turn a screenshot into an order'), findsOneWidget);
+  });
+
+  testWidgets('deletes a draft from the review screen too', (tester) async {
+    var deleted = false;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/auth/login')) return session();
+      if (request.method == 'DELETE' && request.url.path.endsWith('/ai/imports/imp-1')) {
+        deleted = true;
+        return http.Response('', 204);
+      }
+      if (request.url.path.endsWith('/ai/imports/imp-1')) {
+        return json({'import': importBody(id: 'imp-1'), 'customer': null});
+      }
+      if (request.url.path.endsWith('/ai/customers/match')) {
+        return json({'customer': null, 'matchedBy': null});
+      }
+      if (request.url.path.endsWith('/products')) {
+        return json({'products': <Object>[]});
+      }
+      if (request.url.path.endsWith('/ai/chat')) {
+        return json(deleted ? {'messages': <Object>[]} : chatBody(importId: 'imp-1'));
+      }
+      if (request.url.path.endsWith('/ai/imports')) {
+        return json({'imports': deleted ? <Object>[] : [importBody(id: 'imp-1')]});
+      }
+      return json(<String, Object>{});
+    });
+
+    await pumpChat(tester, client);
+
+    await tester.tap(find.text('Review & confirm'));
+    await tester.pumpAndSettle();
+    expect(find.text('Review order'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Delete draft'));
     await tester.pumpAndSettle();
     expect(find.text('Delete this draft?'), findsOneWidget);
 
