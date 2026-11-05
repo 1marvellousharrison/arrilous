@@ -145,35 +145,48 @@ class ApiClient {
   /// so a wrong password never triggers it.
   final void Function()? onUnauthorized;
 
-  Future<dynamic> get(String path, {String? token, Map<String, String>? headers}) =>
-      _send('GET', path, token: token, headers: headers);
+  Future<dynamic> get(
+    String path, {
+    String? token,
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) =>
+      _send('GET', path, token: token, headers: headers, timeout: timeout);
 
   Future<dynamic> post(
     String path, {
     Map<String, dynamic>? body,
     String? token,
     Map<String, String>? headers,
+    Duration? timeout,
   }) =>
-      _send('POST', path, body: body, token: token, headers: headers);
+      _send('POST', path, body: body, token: token, headers: headers, timeout: timeout);
 
   Future<dynamic> put(
     String path, {
     Map<String, dynamic>? body,
     String? token,
     Map<String, String>? headers,
+    Duration? timeout,
   }) =>
-      _send('PUT', path, body: body, token: token, headers: headers);
+      _send('PUT', path, body: body, token: token, headers: headers, timeout: timeout);
 
   Future<dynamic> patch(
     String path, {
     Map<String, dynamic>? body,
     String? token,
     Map<String, String>? headers,
+    Duration? timeout,
   }) =>
-      _send('PATCH', path, body: body, token: token, headers: headers);
+      _send('PATCH', path, body: body, token: token, headers: headers, timeout: timeout);
 
-  Future<dynamic> delete(String path, {String? token, Map<String, String>? headers}) =>
-      _send('DELETE', path, token: token, headers: headers);
+  Future<dynamic> delete(
+    String path, {
+    String? token,
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) =>
+      _send('DELETE', path, token: token, headers: headers, timeout: timeout);
 
   Future<dynamic> _send(
     String method,
@@ -181,6 +194,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     String? token,
     Map<String, String>? headers,
+    Duration? timeout,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     final requestHeaders = <String, String>{
@@ -212,12 +226,12 @@ class ApiClient {
         'DELETE' => _client.delete(uri, headers: requestHeaders),
         _ => throw ArgumentError('Unsupported method $method'),
       }
-          .timeout(timeout);
+          .timeout(timeout ?? this.timeout);
     } on ArgumentError {
       rethrow;
-    } on Exception catch (error) {
+    } on Exception {
       throw NetworkException(
-        'Cannot reach the server. Check your connection and try again.\n($error)',
+        'Cannot reach the server. Check your connection and try again.',
       );
     }
 

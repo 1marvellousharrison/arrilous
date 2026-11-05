@@ -13,6 +13,9 @@ process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 process.env.OTP_EXPOSE_IN_RESPONSE = 'true';
 process.env.RATE_LIMIT_MAX = '1000';
 process.env.DATABASE_URL = '';
+// Never call the real vision model from tests; the upload tests exercise the
+// queue/poll path with an empty extraction instead.
+process.env.GEMINI_API_KEY = '';
 
 const { createApp } = await import('../src/app.js');
 const { closeDb, run } = await import('../src/db/index.js');

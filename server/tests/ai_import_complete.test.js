@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { api, createBusinessOwner } from './helpers.js';
 import { queryOne, run } from '../src/db/index.js';
+import { normalizeNigerianPhone } from '../src/routes/ai.js';
 
 async function addProduct(owner, overrides = {}) {
   const res = await api('POST', '/products', {
@@ -268,5 +269,114 @@ describe('screenshot import - creating the order', () => {
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.customer.id, customer.id);
     assert.equal(res.body.matchedBy, 'phone');
+  });
+
+  test('queues the upload and exposes a pollable draft', async () => {
+    const owner = await createBusinessOwner('Queue Store');
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+
+    const res = await api('POST', '/ai/import', {
+      token: owner.token,
+      body: { imageDataUrl: image, source: 'screenshot' },
+    });
+    assert.equal(res.status, 202, JSON.stringify(res.body));
+    assert.equal(res.body.import.status, 'processing');
+    const id = res.body.import.id;
+
+    // No Gemini key exists in tests, so the background read settles quickly
+    // with a review draft instead of holding the upload request open.
+    let detail;
+    for (let i = 0; i < 50; i += 1) {
+      detail = await api('GET', `/ai/imports/${id}`, { token: owner.token });
+      if (detail.body.import.status !== 'processing') break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.notEqual(detail.body.import.status, 'processing');
+
+    const chat = await api('GET', '/ai/chat', { token: owner.token });
+    assert.ok(
+      chat.body.messages.some(
+        (message) => message.orderImportId === id && message.messageType === 'order_draft'
+      ),
+      'the finished draft is in the chat'
+    );
+
+    // Re-uploading the same image returns the existing draft, not a duplicate.
+    const again = await api('POST', '/ai/import', {
+      token: owner.token,
+      body: { imageDataUrl: image, source: 'screenshot' },
+    });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal(again.body.import.id, id);
+    assert.equal(again.body.deduplicated, true);
+  });
+
+  test('normalizes Nigerian phone formats and rejects unusable numbers', () => {
+    assert.equal(normalizeNigerianPhone('0803 731 1300'), '+2348037311300');
+    assert.equal(normalizeNigerianPhone('+2348037311300'), '+2348037311300');
+    assert.equal(normalizeNigerianPhone('2348037311300'), '+2348037311300');
+    assert.equal(normalizeNigerianPhone('8037311300'), '+2348037311300');
+    assert.equal(normalizeNigerianPhone('08037311300 / 08021234567'), '+2348037311300');
+    assert.equal(normalizeNigerianPhone('12345'), null);
+    assert.equal(normalizeNigerianPhone(''), null);
+  });
+
+  test('refuses an unusable phone instead of saving it', async () => {
+    const owner = await createBusinessOwner('Bad Phone Store');
+    const product = await addProduct(owner);
+    const importId = await createImport(owner, { customerName: 'Mr Ben' });
+
+    const res = await api('POST', `/ai/imports/${importId}/complete`, {
+      token: owner.token,
+      body: {
+        customer_name: 'Mr Ben',
+        customer_phone: '12345',
+        items: [{ name: 'adidas', quantity: 1, product_id: product.id }],
+        delivery_required: false,
+      },
+    });
+
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error.details[0].field, 'customer_phone');
+    const count = await queryOne(
+      'SELECT COUNT(*) AS total FROM customers WHERE business_id = ?',
+      owner.business.id
+    );
+    assert.equal(count.total, 0);
+  });
+
+  test('deletes a draft that has not become a sale', async () => {
+    const owner = await createBusinessOwner('Draft Delete Store');
+    const importId = await createImport(owner, { customerName: 'Mr Ben' });
+
+    const res = await api('DELETE', `/ai/imports/${importId}`, { token: owner.token });
+
+    assert.equal(res.status, 204, JSON.stringify(res.body));
+    const row = await queryOne('SELECT id FROM order_imports WHERE id = ?', importId);
+    assert.equal(row, undefined);
+  });
+
+  test('refuses to delete a draft that became a sale', async () => {
+    const owner = await createBusinessOwner('Sold Draft Store');
+    const product = await addProduct(owner);
+    const importId = await createImport(owner, { customerName: 'Mr Ben' });
+
+    const completed = await api('POST', `/ai/imports/${importId}/complete`, {
+      token: owner.token,
+      body: {
+        customer_name: 'Mr Ben',
+        items: [{ name: 'adidas', quantity: 1, product_id: product.id }],
+        delivery_required: false,
+      },
+    });
+    assert.equal(completed.status, 200, JSON.stringify(completed.body));
+
+    const res = await api('DELETE', `/ai/imports/${importId}`, { token: owner.token });
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    const txn = await queryOne(
+      'SELECT id FROM transactions WHERE id = ?',
+      completed.body.transactionId
+    );
+    assert.ok(txn, 'the recorded sale is still there');
   });
 });

@@ -34,20 +34,46 @@ aiRouter.get('/chat', async (req, res) => {
 
 aiRouter.post('/import', async (req, res) => {
   const { imageDataUrl, imageUrl, source = 'screenshot' } = req.body || {};
-  if (!imageDataUrl && !imageUrl) {
+  const image = imageDataUrl || imageUrl;
+  if (!image) {
     throw badRequest('Upload an image to import an order.');
   }
 
+  // Re-uploading the same picture while its draft is still open used to create
+  // a second draft (and a second extraction). Keep one draft per image for a
+  // short window so a retry after a timeout is harmless.
+  const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const duplicate = await queryOne(
+    `SELECT oi.*, t.transaction_number
+       FROM order_imports oi
+       LEFT JOIN transactions t ON t.id = oi.transaction_id
+      WHERE oi.business_id = ? AND oi.image_url = ?
+        AND oi.status IN ('processing', 'extracted', 'review')
+        AND oi.created_at >= ?
+      ORDER BY oi.created_at DESC LIMIT 1`,
+    req.business.id,
+    image,
+    since
+  );
+  if (duplicate) {
+    return res.status(200).json({
+      import: formatImport(duplicate),
+      processing: duplicate.status === 'processing',
+      deduplicated: true,
+    });
+  }
+
   const importId = crypto.randomUUID();
+  const createdAt = now();
   await run(
     'INSERT INTO order_imports (id, business_id, user_id, source, image_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, \'processing\', ?, ?)',
     importId,
     req.business.id,
     req.auth.userId,
     source,
-    imageDataUrl || imageUrl,
-    now(),
-    now()
+    image,
+    createdAt,
+    createdAt
   );
 
   await run(
@@ -57,12 +83,47 @@ aiRouter.post('/import', async (req, res) => {
     req.auth.userId,
     importId,
     'Uploaded a screenshot/photo for order import',
-    JSON.stringify({ image: imageDataUrl || imageUrl }),
-    now()
+    JSON.stringify({ image }),
+    createdAt
   );
 
-  const extracted = await extractOrderFromImage(imageDataUrl || imageUrl);
-  extracted.items = await matchCatalogItems(req.business.id, extracted.items || []);
+  const importRow = await queryOne(
+    `SELECT oi.*, t.transaction_number
+       FROM order_imports oi
+       LEFT JOIN transactions t ON t.id = oi.transaction_id
+      WHERE oi.id = ?`,
+    importId
+  );
+
+  // Reading a photo can take longer than a mobile HTTP request is willing to
+  // wait (and a cold Render instance adds its own delay). Answer as soon as the
+  // draft is queued, then let the client poll it. Holding the request open was
+  // what produced "cannot reach the server" while the extraction still finished
+  // in the background.
+  res.status(202).json({ import: formatImport(importRow), processing: true });
+
+  setImmediate(() => {
+    processImport({
+      importId,
+      businessId: req.business.id,
+      userId: req.auth.userId,
+      image,
+    }).catch((error) => {
+      console.error('Screenshot import failed:', error?.message || error);
+    });
+  });
+});
+
+/// Reads a queued screenshot, matches its items to the catalog and records the
+/// result as a chat draft. Runs after the upload response has been sent.
+async function processImport({ importId, businessId, userId, image }) {
+  const extracted = await extractOrderFromImage(image);
+  extracted.items = await matchCatalogItems(businessId, extracted.items || []);
+
+  // The owner may delete the draft while the model is still reading it. Do not
+  // write a result (or a chat message pointing at a missing draft) in that case.
+  const stillExists = await queryOne('SELECT id FROM order_imports WHERE id = ?', importId);
+  if (!stillExists) return;
 
   const missingFields = [];
   if (!extracted.customerName && !extracted.customerPhone) {
@@ -80,6 +141,7 @@ aiRouter.post('/import', async (req, res) => {
     }
   }
 
+  const updatedAt = now();
   await run(
     'UPDATE order_imports SET status = ?, extracted_customer_name = ?, extracted_customer_phone = ?, items_json = ?, delivery_required = ?, delivery_address = ?, delivery_fee_kobo = ?, discount_kobo = ?, missing_fields_json = ?, updated_at = ? WHERE id = ?',
     missingFields.length > 0 ? 'review' : 'extracted',
@@ -91,7 +153,7 @@ aiRouter.post('/import', async (req, res) => {
     extracted.deliveryFeeKobo || null,
     extracted.discountKobo || 0,
     JSON.stringify(missingFields),
-    now(),
+    updatedAt,
     importId
   );
 
@@ -104,8 +166,8 @@ aiRouter.post('/import', async (req, res) => {
   await run(
     'INSERT INTO ai_chat_messages (id, business_id, user_id, order_import_id, role, message_type, content, metadata_json, created_at) VALUES (?, ?, ?, ?, \'assistant\', \'order_draft\', ?, ?, ?)',
     crypto.randomUUID(),
-    req.business.id,
-    req.auth.userId,
+    businessId,
+    userId,
     importId,
     assistantMsg,
     JSON.stringify({
@@ -114,7 +176,7 @@ aiRouter.post('/import', async (req, res) => {
       importId,
       incomplete: missingFields.length > 0,
     }),
-    now()
+    updatedAt
   );
 
   if (missingFields.length > 0) {
@@ -123,21 +185,15 @@ aiRouter.post('/import', async (req, res) => {
     await run(
       'INSERT INTO notifications (id, business_id, user_id, order_import_id, type, title, message, severity, created_at) VALUES (?, ?, ?, ?, \'order_import_incomplete\', ?, ?, \'warning\', ?)',
       crypto.randomUUID(),
-      req.business.id,
-      req.auth.userId,
+      businessId,
+      userId,
       importId,
       'Order draft needs details',
       `Missing: ${missingFields.map(missingFieldLabel).join(', ')}.`,
-      now()
+      updatedAt
     );
   }
-
-  const imp = await queryOne('SELECT * FROM order_imports WHERE id = ?', importId);
-  res.status(201).json({
-    import: formatImport(imp),
-    messages: await getRecentMessages(req.business.id),
-  });
-});
+}
 
 function missingFieldLabel(f) {
   switch (f) {
@@ -206,6 +262,7 @@ Return STRICTLY VALID JSON only. No markdown, no code fences, no commentary.
   "phoneNumber": "string or null",
   "deliveryAddress": "string or null",
   "wantsDelivery": true or false,
+  "deliveryFee": number or null,
   "discount": number or null,
   "items": [
     { "name": "string", "quantity": 1, "price": number or null }
@@ -215,11 +272,12 @@ Return STRICTLY VALID JSON only. No markdown, no code fences, no commentary.
 
 Rules:
 - customerName: the buyer's name ("Mr Ben", "Chinedu", etc.). Never the shop name.
-- phoneNumber: any Nigerian phone number, keep every digit (e.g. "08037311300").
+- phoneNumber: the buyer's Nigerian mobile number only, written as 11 local digits ("0803 731 1300") or "+234" plus 10 digits. If the number is longer, shorter, or belongs to the shop, use null.
 - deliveryAddress: only a real street/area/city address. If the text only says delivery is wanted, leave null and set wantsDelivery true.
 - wantsDelivery: true whenever the order mentions delivery, dispatch, rider, "send am", "bring it", "wants delivery", or gives an address.
+- deliveryFee: the delivery/dispatch/rider fee in naira when the order states one ("delivery 2k" -> 2000, "dispatch 1500" -> 1500). If only the order total is written, leave null.
 - discount: the discount amount in naira if the order mentions one ("Discount of 2000" -> 2000). Otherwise null.
-- items: every product mentioned. "2 adidas" -> name "adidas", quantity 2. Quantity defaults to 1. price is the unit price ONLY when a price is actually written; if no price appears use null, never 0.
+- items: every product mentioned. "2 adidas" -> name "adidas", quantity 2. Quantity defaults to 1. price is the unit price in naira ONLY when a price is actually written; if no price appears use null, never 0.
 - totalAmount: the final total in naira only when written. Otherwise null.
 - Never invent values. Use null for anything not visible.`;
 
@@ -243,7 +301,7 @@ async function callGeminiRest(apiKey, model, imageDataUrl) {
       ],
       generationConfig: { temperature: 0, responseMimeType: 'application/json' },
     }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(20000),
   });
   const text = await res.text();
   let payload;
@@ -280,8 +338,12 @@ async function extractOrderFromImage(imageData) {
     'gemini-flash-latest',
   ].filter((m, i, all) => m && all.indexOf(m) === i);
 
+  // The model chain is a fallback, not a queue: stop after a minute so a
+  // single unavailable model cannot hold an import for several minutes.
+  const deadline = Date.now() + 60000;
   let lastError = null;
   for (const model of models) {
+    if (Date.now() > deadline) break;
     try {
       const text = await callGeminiRest(apiKey, model, imageData);
       const parsed = parseGeminiJson(text);
@@ -306,16 +368,37 @@ async function extractOrderFromImage(imageData) {
         parsed.deliveryRequired === true ||
         !!parsed.deliveryAddress;
 
+      const discountKobo = toKoboFromPrice(parsed.discount) || 0;
+      const totalKobo = toKoboFromPrice(parsed.totalAmount);
+      let deliveryFeeKobo = toKoboFromPrice(
+        parsed.deliveryFee ?? parsed.delivery_fee ?? parsed.shippingFee
+      );
+
+      // When the slip writes a total but not the rider fee, the difference
+      // between the priced items and the total is the fee. Only trust it when
+      // every item actually carried a price.
+      if (wantsDelivery && (!deliveryFeeKobo || deliveryFeeKobo <= 0) && totalKobo) {
+        const itemsKobo = items.reduce(
+          (sum, it) => sum + (it.unit_price_kobo || 0) * (it.quantity || 1),
+          0
+        );
+        if (itemsKobo > 0) {
+          const inferred = totalKobo - (itemsKobo - discountKobo);
+          if (inferred > 0) deliveryFeeKobo = inferred;
+        }
+      }
+
       return {
         customerName: parsed.customerName || null,
-        customerPhone:
-          parsed.phoneNumber || parsed.phone || parsed.customerPhone || null,
+        customerPhone: normalizeNigerianPhone(
+          parsed.phoneNumber || parsed.phone || parsed.customerPhone
+        ),
         items,
         deliveryRequired: wantsDelivery,
         deliveryAddress: parsed.deliveryAddress || null,
-        deliveryFeeKobo: toKoboFromPrice(parsed.deliveryFee),
-        discountKobo: toKoboFromPrice(parsed.discount) || 0,
-        totalKobo: toKoboFromPrice(parsed.totalAmount),
+        deliveryFeeKobo,
+        discountKobo,
+        totalKobo,
         notes: parsed.notes || null,
       };
     } catch (e) {
@@ -460,14 +543,35 @@ function normalizePhone(value) {
   return digits;
 }
 
+/// Picks the first valid Nigerian mobile number out of a value and returns it
+/// as E.164 ("+2348037311300"). Returns null for landlines, short codes and
+/// anything that is not a complete 10-digit mobile number.
+export function normalizeNigerianPhone(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+
+  let national = null;
+  if (digits.startsWith('234') && digits.length >= 13) {
+    national = digits.slice(3, 13);
+  } else if (digits.startsWith('0') && digits.length >= 11) {
+    national = digits.slice(1, 11);
+  } else if (digits.length >= 10) {
+    national = digits.slice(0, 10);
+  }
+
+  if (national && /^[789]\d{9}$/.test(national)) return `+234${national}`;
+
+  // A screenshot may put the number beside other digits (prices, quantities).
+  const match = digits.match(/[789]\d{9}/);
+  return match ? `+234${match[0]}` : null;
+}
+
 /// The E.164 form the rest of the app stores ("+2348037311300"), so a customer
 /// created from a screenshot looks like one created from the customer screen.
 function toE164(value) {
-  const digits = String(value ?? '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('234')) return `+${digits}`;
-  if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
-  return `+${digits}`;
+  return normalizeNigerianPhone(value);
 }
 
 /// Compares names without case, punctuation or honorifics, so "Mr Ben" and
@@ -559,18 +663,23 @@ async function resolveCustomer(businessId, { name, phone, address }) {
   return { id, name: finalName, phone: storedPhone, address: cleanAddress || null, matchedBy: null };
 }
 
-async function getRecentMessages(businessId) {
-  const messages = await queryAll('SELECT * FROM ai_chat_messages WHERE business_id = ? ORDER BY created_at DESC LIMIT 50', businessId);
-  return messages.reverse().map((m) => ({
-    id: m.id,
-    role: m.role,
-    messageType: m.message_type,
-    content: m.content,
-    metadata: m.metadata_json ? JSON.parse(m.metadata_json) : null,
-    orderImportId: m.order_import_id,
-    createdAt: m.created_at,
-  }));
-}
+aiRouter.delete('/imports/:id', async (req, res) => {
+  const imp = await queryOne(
+    'SELECT * FROM order_imports WHERE id = ? AND business_id = ?',
+    req.params.id,
+    req.business.id
+  );
+  if (!imp) throw notFound('Import not found');
+
+  // A draft that became a sale is a recorded transaction and must stay. The
+  // chat messages and notification cascade with the import row.
+  if (imp.transaction_id || imp.status === 'completed') {
+    throw badRequest('This draft has already become a sale and cannot be deleted.');
+  }
+
+  await run('DELETE FROM order_imports WHERE id = ?', imp.id);
+  res.status(204).end();
+});
 
 aiRouter.get('/imports', async (req, res) => {
   const imports = await queryAll(
@@ -642,6 +751,18 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
       { field: 'customer_name', message: 'A customer name or phone is required.' },
     ]);
   }
+
+  // Store the same E.164 shape every other screen uses. A number that is not a
+  // complete Nigerian mobile is refused here instead of becoming a customer
+  // with an unusable, over-long phone.
+  const phoneInput = (customer_phone ?? '').trim();
+  const phoneE164 = phoneInput ? normalizeNigerianPhone(phoneInput) : null;
+  if (phoneInput && !phoneE164) {
+    throw badRequest('Enter a valid Nigerian phone number.', [
+      { field: 'customer_phone', message: 'Enter a valid Nigerian phone number.' },
+    ]);
+  }
+
   if (!Array.isArray(items) || items.length === 0) {
     throw badRequest('Add at least one product to the order.', [
       { field: 'items', message: 'The order has no items.' },
@@ -669,7 +790,7 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
   } else {
     customer = await resolveCustomer(businessId, {
       name: customer_name,
-      phone: customer_phone,
+      phone: phoneE164,
       address: delivery_required ? delivery_address : null,
     });
   }

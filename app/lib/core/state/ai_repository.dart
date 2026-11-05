@@ -13,46 +13,124 @@ class AiRepository extends ChangeNotifier {
   List<AiMessage> messages = const [];
   List<OrderImport> imports = const [];
 
+  /// True while the first (or a manual) load is running, so the chat can show
+  /// a spinner instead of an empty conversation.
+  bool loading = false;
+
+  /// The last load failure, if any. The screen offers a retry instead of
+  /// silently showing an empty chat.
+  String? error;
+
   void updateToken(String? token) {
     _token = token;
+  }
+
+  Future<void> loadAll() async {
+    if (_token == null) return;
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      await Future.wait([_fetchChat(), _fetchImports()]);
+    } catch (e) {
+      error = _friendly(e);
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> loadChat() async {
     if (_token == null) return;
     try {
-      final data = await _api.get('/ai/chat', token: _token) as Map<String, dynamic>;
-      messages = (data['messages'] as List<dynamic>? ?? const [])
-          .map((e) => AiMessage.fromJson(e as Map<String, dynamic>))
-          .toList();
-      notifyListeners();
-    } catch (_) {}
+      await _fetchChat();
+      error = null;
+    } catch (e) {
+      error = _friendly(e);
+    }
+    notifyListeners();
   }
 
   Future<void> loadImports() async {
     if (_token == null) return;
     try {
-      final data = await _api.get('/ai/imports', token: _token) as Map<String, dynamic>;
-      imports = (data['imports'] as List<dynamic>? ?? const [])
-          .map((e) => OrderImport.fromJson(e as Map<String, dynamic>))
-          .toList();
-      notifyListeners();
-    } catch (_) {}
+      await _fetchImports();
+      error = null;
+    } catch (e) {
+      error = _friendly(e);
+    }
+    notifyListeners();
   }
 
-  Future<Map<String, dynamic>?> importImage({String? imageDataUrl, String? imageUrl, String source = 'screenshot'}) async {
+  Future<void> _fetchChat() async {
+    final data = await _api.get('/ai/chat', token: _token) as Map<String, dynamic>;
+    messages = (data['messages'] as List<dynamic>? ?? const [])
+        .map((e) => AiMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> _fetchImports() async {
+    final data = await _api.get('/ai/imports', token: _token) as Map<String, dynamic>;
+    imports = (data['imports'] as List<dynamic>? ?? const [])
+        .map((e) => OrderImport.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Queues the image and returns immediately. The server reads it in the
+  /// background, so this request is short even on a cold backend; call
+  /// [waitForImport] to follow the draft until extraction finishes.
+  Future<Map<String, dynamic>?> importImage({
+    String? imageDataUrl,
+    String? imageUrl,
+    String source = 'screenshot',
+  }) async {
     if (_token == null) return null;
-    final data = await _api.post(
+    return await _api.post(
       '/ai/import',
       token: _token,
+      // A cold Render instance can take half a minute to wake, and the image
+      // itself can be a few megabytes. The extraction no longer happens inside
+      // this request, so this is only the upload + queue time.
+      timeout: const Duration(seconds: 75),
       body: {
         if (imageDataUrl != null) 'imageDataUrl': imageDataUrl,
         if (imageUrl != null) 'imageUrl': imageUrl,
         'source': source,
       },
     ) as Map<String, dynamic>;
-    await loadChat();
-    await loadImports();
-    return data;
+  }
+
+  /// Polls the draft until extraction leaves `processing`. Returns null when
+  /// the server takes longer than [timeout]; the draft is still in the chat, so
+  /// the owner can open it later instead of losing the upload.
+  Future<OrderImport?> waitForImport(
+    String importId, {
+    Duration timeout = const Duration(minutes: 3),
+    Duration interval = const Duration(seconds: 2),
+  }) async {
+    if (_token == null) return null;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final data = await _api.get('/ai/imports/$importId', token: _token) as Map<String, dynamic>;
+        final raw = data['import'];
+        if (raw is Map<String, dynamic>) {
+          final import = OrderImport.fromJson(raw);
+          if (import.status != 'processing') return import;
+        }
+      } on ApiException catch (e) {
+        if (e.statusCode == 404) return null;
+      }
+      await Future<void>.delayed(interval);
+    }
+    return null;
+  }
+
+  /// Removes a draft that has not become a sale yet. The server refuses once a
+  /// transaction exists, so a recorded order can never be lost this way.
+  Future<void> deleteImport(String importId) async {
+    await _api.delete('/ai/imports/$importId', token: _token);
+    await loadAll();
   }
 
   Future<Map<String, dynamic>> completeImport(String importId, Map<String, dynamic> body) async {
@@ -80,6 +158,12 @@ class AiRepository extends ChangeNotifier {
     if (query.isEmpty) return const {'customer': null, 'matchedBy': null};
     final suffix = Uri(queryParameters: query).query;
     return await _api.get('/ai/customers/match?$suffix', token: _token) as Map<String, dynamic>;
+  }
+
+  String _friendly(Object error) {
+    if (error is ApiException) return error.message;
+    if (error is NetworkException) return error.message;
+    return 'Could not load your chats. Check your connection and try again.';
   }
 }
 
@@ -139,4 +223,6 @@ class OrderImport {
   final int? discountKobo;
   final String? transactionId;
   final String? transactionNumber;
+
+  bool get isProcessing => status == 'processing';
 }
