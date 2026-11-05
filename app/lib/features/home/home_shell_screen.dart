@@ -344,6 +344,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           onStaff: _openStaff,
           business: widget.business,
           logistics: widget.logistics,
+          appNotifications: widget.appNotifications,
           isStaff: _isStaff,
         ),
     };
@@ -356,7 +357,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       );
 
   /// Spec 6 — `+ New Transaction` offers three entry methods over one engine.
-  /// Only manual entry runs today; the other two are visible and inert.
+  /// Manual entry and screenshot import both run today; WhatsApp AI is still
+  /// visible and inert.
   Future<void> _newTransaction() async {
     if (!await _ensureDetailsBeforeSale()) return;
     if (!mounted) return;
@@ -494,6 +496,7 @@ class _ProfileScreen extends StatefulWidget {
     required this.onStaff,
     required this.business,
     required this.logistics,
+    required this.appNotifications,
     required this.isStaff,
   });
 
@@ -503,6 +506,7 @@ class _ProfileScreen extends StatefulWidget {
   final Future<void> Function() onStaff;
   final BusinessRepository business;
   final LogisticsRepository logistics;
+  final AppNotificationsRepository appNotifications;
   final bool isStaff;
 
   @override
@@ -515,11 +519,15 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     super.initState();
     widget.logistics.loadNotifications();
     widget.logistics.load();
+    widget.appNotifications.load();
   }
 
   Future<void> _openNotifications() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (_) => NotificationsScreen(logistics: widget.logistics),
+          builder: (_) => NotificationsScreen(
+            logistics: widget.logistics,
+            appNotifications: widget.appNotifications,
+          ),
         ),
       );
 
@@ -537,33 +545,39 @@ class _ProfileScreenState extends State<_ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final logistics = widget.logistics;
+    final appNotifications = widget.appNotifications;
     return ListenableBuilder(
-      listenable: Listenable.merge([logistics, widget.business]),
-      builder: (context, _) => ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          _businessHeader(widget.business.business),
-          const SizedBox(height: AppSpacing.lg),
-          ListTile(
-            leading: const Icon(Icons.notifications_none),
-            title: const Text('Notifications'),
-            subtitle: Text(logistics.unreadCount > 0 ? '${logistics.unreadCount} unread' : 'Delivery request activity'),
-            onTap: _openNotifications,
-          ),
-          ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
-          ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
-          if (!widget.isStaff)
-            ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
-          ListTile(
-            leading: const Icon(Icons.local_shipping_outlined),
-            title: const Text('Delivery requests'),
-            subtitle: Text(logistics.requests.isEmpty ? 'Track each delivery' : '${logistics.requests.length} total'),
-            onTap: _openAllRequests,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), onTap: widget.onOpenSettings),
-        ],
-      ),
+      listenable: Listenable.merge([logistics, appNotifications, widget.business]),
+      builder: (context, _) {
+        final unread = logistics.unreadCount + appNotifications.unreadCount;
+        return ListView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          children: [
+            _businessHeader(widget.business.business),
+            const SizedBox(height: AppSpacing.lg),
+            ListTile(
+              leading: const Icon(Icons.notifications_none),
+              title: const Text('Notifications'),
+              subtitle: Text(
+                unread > 0 ? '$unread unread' : 'Order alerts and delivery activity',
+              ),
+              onTap: _openNotifications,
+            ),
+            ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
+            ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
+            if (!widget.isStaff)
+              ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
+            ListTile(
+              leading: const Icon(Icons.local_shipping_outlined),
+              title: const Text('Delivery requests'),
+              subtitle: Text(logistics.requests.isEmpty ? 'Track each delivery' : '${logistics.requests.length} total'),
+              onTap: _openAllRequests,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), onTap: widget.onOpenSettings),
+          ],
+        );
+      },
     );
   }
 

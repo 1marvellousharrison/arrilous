@@ -505,6 +505,37 @@ Delivery events (requested, quoted, assigned, status changes) write a row here
 for each stakeholder, and the in-app inbox reads it — no third-party delivery
 channel is involved (see `docs/future-integrations.md`).
 
+### In-app notifications
+
+The general inbox carries app alerts (for example an order draft that still
+needs details) alongside delivery activity in the Profile tab.
+
+| Method | Route | Notes |
+|---|---|---|
+| `GET` | `/notifications` | `{ notifications, unreadCount }` for the signed-in business |
+| `PATCH` | `/notifications/:id/read` | marks one read (`200`) |
+| `POST` | `/notifications/read-all` | marks every unread alert read (`200`) |
+
+### AI / screenshot import
+
+`GEMINI_API_KEY` stays on the server. Uploads are queued and read in the
+background, so the HTTP request never waits for the vision model.
+
+| Method | Route | Notes |
+|---|---|---|
+| `POST` | `/ai/import` | queues an image (`202`); re-uploading the same image within 15 minutes returns the existing draft (`200`, `deduplicated: true`) |
+| `GET` | `/ai/imports` | every draft for the business |
+| `GET` | `/ai/imports/:id` | one draft — poll this until `status` leaves `processing` |
+| `POST` | `/ai/imports/:id/complete` | confirms the draft and records the sale |
+| `DELETE` | `/ai/imports/:id` | deletes a draft that has not become a sale (`204`); a recorded sale is refused (`400`) |
+| `GET` | `/ai/chat` | the chat thread, including image and draft messages |
+| `GET` | `/ai/customers/match` | finds a saved customer by `name` or `phone` |
+
+Catalog prices and names win over anything the model reads: the server rematches
+each line against the catalog before the draft is shown. Phone numbers are
+normalized to `+234` E.164, and a provided number that is not a complete
+Nigerian mobile is refused with `400` on `customer_phone`.
+
 ## Rate limits
 
 Per IP, per route, in-memory (per process — see the note in

@@ -274,12 +274,11 @@ class _Root extends StatelessWidget {
           );
         }
 
-        // Logistics and rider workspaces are a later phase. Sending those roles
-        // into the business shell asks `GET /business` a question the server
-        // refuses for them, which used to strand the account on an error screen
-        // with no way back. Give them a real screen with a way out instead.
-        // Staff, by contrast, belong to a business and use the same shell as
-        // the owner — restricted to their own slice of it.
+        // Logistics partner and rider accounts get their own workspace, not the
+        // business shell: sending those roles into it asks `GET /business` a
+        // question the server refuses for them. Staff, by contrast, belong to a
+        // business and use the same shell as the owner — restricted to their
+        // own slice of it.
         if (user.role == 'logistics_partner' || user.role == 'rider') {
           return LogisticsWorkspaceScreen(
             user: user,

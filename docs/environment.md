@@ -33,7 +33,8 @@ Never commit `.env` — it is already in `server/.gitignore`.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DATABASE_PATH` | `./data/app.db` | Use `:memory:` for throwaway runs |
+| `DATABASE_URL` | — | Postgres connection string (Supabase pooler). **Required in production.** When unset, an in-process PGlite database is used. |
+| `PGLITE_DATA_DIR` | unset (in-memory) | Optional on-disk directory for the local PGlite fallback; tests leave it unset for a fresh database each run. |
 
 ## Tokens
 
@@ -97,6 +98,16 @@ implemented. Setting one of these flips the matching service to
 Unset is the normal state: every reserved method throws `501 not_implemented`
 regardless, and no external call is made. Credentials for these providers are
 read where they are used and must **never** be added to `config.js` or logged.
+
+### Screenshot import (live)
+
+Unlike the boundaries above, the vision model is active. Its key stays on the
+server and is never exposed to the app.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `GEMINI_API_KEY` | unset | When unset, screenshot extraction is disabled and the upload settles as an empty draft. |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | First model tried; the server falls back through a short chain and stops after 60 seconds. |
 
 ## Development seed data (Phase 17)
 

@@ -18,8 +18,8 @@ auth system.
 
 | Layer | Choice | Why |
 |---|---|---|
-| API | Node 26 + Express 5 | Already installed; native ESM; first-class async error propagation in Express 5 |
-| Database | SQLite via built-in `node:sqlite` | No native build step, no external service; `node:sqlite` is stable on Node 26 |
+| API | Node 22+ + Express 5 | Already installed; native ESM; first-class async error propagation in Express 5 |
+| Database | Postgres in production, PGlite locally and in tests | One SQL dialect everywhere; no native build step for local runs or CI |
 | Migrations | Versioned `.sql` files applied in filename order | Portable, reviewable, no extra dependency |
 | Validation | Zod | Single source of truth for request shape *and* generated field-level error messages |
 | Passwords | `node:crypto` scrypt (N=16384, r=8, p=1, 64-byte key) | No native dependency; cost parameters stored with the hash so they can be raised later |

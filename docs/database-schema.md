@@ -1,16 +1,17 @@
 # Database schema
 
-Engine: SQLite via the built-in `node:sqlite` driver.
+Engine: Postgres in production (`DATABASE_URL`, Supabase pooler) and an in-process
+PGlite database locally and in tests. Both speak the same SQL, so migrations and
+queries are shared.
 Migrations live in `server/src/db/migrations/` and are applied in filename
 order by `npm run migrate`, each inside a transaction and recorded in
 `_migrations`. Never edit an applied migration — add a new one.
 
-Connection pragmas: `journal_mode = WAL`, `foreign_keys = ON`,
-`busy_timeout = 5000`.
+Local PGlite needs no connection pragmas; production Postgres manages
+concurrency itself.
 
-Timestamps are ISO-8601 UTC strings (`strftime('%Y-%m-%dT%H:%M:%fZ','now')`).
-Money will be stored as integer minor units (kobo) from Phase 5 onwards — never
-as floating point.
+Timestamps are ISO-8601 UTC strings. Money is stored as integer minor units
+(kobo) — never as floating point.
 
 ---
 
@@ -33,8 +34,8 @@ as floating point.
 | `created_at` / `updated_at` | TEXT | |
 
 CHECK constraints enforce the two enums, non-empty name/email, and a non-empty
-password hash. `phone` is UNIQUE but nullable — SQLite permits many NULLs, which
-is exactly the behaviour needed.
+password hash. `phone` is UNIQUE but nullable — Postgres permits many NULLs,
+which is exactly the behaviour needed.
 
 ### `refresh_tokens`
 
@@ -158,6 +159,22 @@ columns mirroring the organization (including `planned_hours`), and (from
 | `0012_profile_details` | `category` on `logistics_organizations`; `phone`, `category`, `description` on `logistics_riders` |
 | `0013_planned_hours` | `planned_hours` on `logistics_organizations` and `logistics_riders` — the day's shift, kept for display and re-planning |
 | `0014_business_location_area` | `area` on `business_locations` — the pickup location as the owner types it, for the delivery partner |
+| `0015_business_logo` | `logo_url` on `businesses` |
+| `0016_wallets` | `wallets`, `wallet_transactions` — balances and funding/payout history |
+| `0017_staff_accounts` | staff accounts linked to their owning business |
+| `0018_business_edit_otps` | `business_edit_otps` — the owner-confirmation gate before identity edits |
+| `0019_transaction_item_image` | `image_url` on `transaction_items` |
+| `0020_order_imports` | `order_imports`, `ai_chat_messages`, `notifications` |
+| `0021_transaction_source_screenshot` | `source` on `transactions` (`manual` \| `screenshot`) |
+
+### Order imports
+
+`order_imports` holds a screenshot draft until the owner confirms it:
+`status` (`processing` \| `extracted` \| `review` \| `confirmed` \|
+`completed` \| `failed`), the extracted customer name/phone, `items_json`,
+delivery/discount fields, `missing_fields_json`, and `transaction_id` once a
+sale exists. `ai_chat_messages` and the general `notifications` inbox cascade
+from it, so deleting an unsold draft removes its chat trail too.
 
 Every money column is `*_kobo` INTEGER (see the API's money-field contract);
 `product_name_snapshot` on `transaction_items` is what guarantees historical

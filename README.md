@@ -28,13 +28,14 @@ Build order: [`phase_build_prompt.md`](phase_build_prompt.md)
 | 13 | Security / tenant isolation | Done — ownership resolved from the token, cross-tenant tests in every suite |
 | 14 | Future integration architecture | Done — inert `services/` boundaries: WhatsApp, Payment, Logistics, Notification |
 | 15 | Business rules & validation | Done — Zod schemas, transition table, cross-axis rules, ownership checks |
-| 16 | Testing | Done — 228 server tests, 174 Flutter tests (see below) |
+| 16 | Testing | Done — 293 server tests, 215 Flutter tests (see below) |
 | 17 | Development seed data | Done — `npm run seed` builds the ABC Fashion Store scenarios + a logistics network |
 | 18 | Documentation | Done — architecture, schema, API, environment, integrations |
 | — | **Integrated spec v3 (logistics)** | Done — org/rider accounts, availability, fleet, pricing, matching, delivery lifecycle, business/partner/rider dashboards, in-app notifications |
 
 WhatsApp AI and payment gateways remain deliberately inactive (see
-`docs/future-integrations.md`). The logistics network is **local and live**:
+`docs/future-integrations.md`); screenshot/photo order import through Gemini is
+live and runs server-side. The logistics network is **local and live**:
 partner and rider accounts, service-area + distance matching, fleet with
 assignment/restore, published-quoted-accepted pricing, the full delivery
 lifecycle with OTP confirmation, and dashboards for all three roles. Connecting
@@ -58,13 +59,13 @@ Two boundaries worth stating outright rather than leaving to be discovered:
 
 ```
 dee/
-├─ server/                     Node 26 + Express 5 + node:sqlite API
+├─ server/                     Node 22+ + Express 5 + PGlite/Postgres API
 │  ├─ src/
 │  │  ├─ config.js             env loading + production guards
 │  │  ├─ app.js                express app factory (used by server + tests)
 │  │  ├─ server.js             process entry point
 │  │  ├─ db/
-│  │  │  ├─ index.js           connection, pragmas, query helpers, transactions
+│  │  │  ├─ index.js           PGlite/Postgres connection, query helpers, transactions
 │  │  │  ├─ migrate.js         `npm run migrate`
 │  │  │  ├─ seed.js            `npm run seed` (dev data, refuses production)
 │  │  │  └─ migrations/*.sql   forward-only, applied in filename order
@@ -76,14 +77,16 @@ dee/
 │  │  ├─ middleware/           requireAuth, requireBusiness, requireRole, rateLimit,
 │  │  │                        error envelope
 │  │  └─ routes/               auth, business, products, customers, transactions,
-│  │                           dashboard, logistics (matching + delivery lifecycle)
+│  │                           dashboard, logistics, ai (screenshot import),
+│  │                           notifications, wallet, staff
 │  └─ tests/                   node:test suites
 ├─ app/                        Flutter 3.47 mobile client (Android/iOS/Web)
 │  └─ lib/
 │     ├─ core/api/              ApiClient (GET/POST/PUT/PATCH/DELETE), error types
 │     ├─ core/services/         device location (geolocator, with failure reasons)
 │     ├─ core/state/            Auth, Business, Catalog, Customer, Transaction,
-│     │                         Dashboard, Logistics repositories
+│     │                         Dashboard, Logistics, Wallet, Staff, AI,
+│     │                         AppNotifications repositories
 │     ├─ core/theme/            orangered / #ddd / charcoal-dark theme
 │     ├─ core/utils/            kobo <-> naira formatting and parsing
 │     ├─ features/auth/         login, account type, sign-up, OTP verify, password reset
@@ -94,7 +97,7 @@ dee/
 │     ├─ features/logistics/    business logistics (match + requests) and the
 │     │                         partner/rider workspace dashboards
 │     ├─ features/settings/     settings incl. light/dark switch
-│     └─ features/home/         shell (Home | Sales | Products | Customers) + dashboard
+│     └─ features/home/         shell (Home | Sales | AI/Chats | Logistics | Profile) + dashboard
 └─ docs/                       architecture, schema, API, env, integrations
 ```
 
@@ -133,8 +136,8 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api/v1   # physi
 ## Tests
 
 ```bash
-cd server && npm test     # 228 tests
-cd app    && flutter test # 174 tests
+cd server && npm test     # 293 tests
+cd app    && flutter test # 215 tests
 cd app    && flutter analyze
 ```
 
@@ -150,12 +153,15 @@ cd app    && flutter analyze
 | `server/tests/integrations.test.js` | Phase 14: boundaries exist, are inert, attempt no network call |
 | `server/tests/logistics.test.js`, `logistics_operations.test.js` | spec v3: coverage/distance matching, fleet assignment + restore, lifecycle, quotes, OTP, notifications, 403/404/422 contract |
 | `server/tests/seed.test.js` | Phase 17: scenario set, logistics network, server-consistent totals, idempotent, prod guard |
+| `server/tests/ai_import_complete.test.js`, `ai_catalog_match.test.js` | screenshot import queue + polling, catalog matching, phone normalization, draft deletion |
 | `app/test/money_test.dart` | kobo <-> naira round trip, sub-cent rejection |
 | `app/test/business_repositories_test.dart` | repository parsing, query params, no client totals |
 | `app/test/business_screens_test.dart` | setup flow, location fallback, form validation |
 | `app/test/transaction_repositories_test.dart` | sale posting, filters, paging, detail, legal actions |
 | `app/test/transaction_screens_test.dart` | dashboard, history, new sale, detail + timeline |
 | `app/test/logistics_screens_test.dart` | spec 6/41/42/43/44: dashboard logistics strip, entry options, both workspaces, provider cards |
+| `app/test/ai_chat_screen_test.dart` | AI chat opens at the newest message, searches drafts, deletes only unsold drafts |
+| `app/test/app_notifications_test.dart` | the inbox shows app alerts, marks one read, and opens from the profile tab |
 
 ## Money is never a float
 

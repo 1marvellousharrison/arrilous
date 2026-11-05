@@ -210,34 +210,6 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          _SectionLabel('Coming in later phases'),
-          AppCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (final entry in const [
-                  (Icons.chat_bubble_outline, 'WhatsApp & AI settings'),
-                  (Icons.account_balance_outlined, 'Payments'),
-                  (Icons.local_shipping_outlined, 'Logistics preferences'),
-                  (Icons.notifications_none, 'Notifications'),
-                  (Icons.group_outlined, 'Team & permissions'),
-                ]) ...[
-                  ListTile(
-                    leading: Icon(entry.$1),
-                    title: Text(entry.$2),
-                    trailing: const Icon(
-                      Icons.lock_outline,
-                      size: 18,
-                      color: AppColors.lightTextMuted,
-                    ),
-                    onTap: () => _comingSoon(context, entry.$2),
-                  ),
-                  if (entry.$2 != 'Team & permissions')
-                    Divider(color: Theme.of(context).dividerColor, height: 1),
-                ],
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -245,7 +217,7 @@ class SettingsScreen extends StatelessWidget {
 
   void _comingSoon(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature arrives in a later phase.')),
+      SnackBar(content: Text('$feature is not available yet.')),
     );
   }
 

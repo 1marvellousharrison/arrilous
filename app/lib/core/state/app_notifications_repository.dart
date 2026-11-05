@@ -32,7 +32,7 @@ class AppNotificationsRepository extends ChangeNotifier {
   Future<void> markRead(String id) async {
     if (_token == null) return;
     try {
-      await _api.patch('/notifications//read', token: _token);
+      await _api.patch('/notifications/$id/read', token: _token);
       await load();
     } catch (_) {}
   }
