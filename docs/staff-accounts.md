@@ -1,8 +1,8 @@
-# Staff Accounts (design only)
+# Staff Accounts
 
-> **Status: design — not implemented.** This document records the agreed shape of
-> staff logins so a later phase can build it without re-deciding. Nothing here
-> exists in the codebase yet.
+> **Status: implemented.** The staff code, activation, restricted shell and
+> staff dashboard all run today. This document records the agreed shape so the
+> behaviour and its limits stay explicit.
 
 ## Scope
 
@@ -132,7 +132,7 @@ subset of the owner's.
 
 | Area | Owner | Staff |
 |---|---|---|
-| Home dashboard | full business | **own sales + amounts only** |
+| Home dashboard | full business | **own sales + amounts only**, with today / 7 days / month / all-time, top products and the delivery desk |
 | Sales | all sales | **own sales only**; open detail; **add notes only** |
 | Products | add / edit / archive | **view-only** — cannot add or change |
 | Customers | add / edit / delete | **add only** — no edit or delete |
@@ -150,6 +150,29 @@ Notes:
 - Product screens are read-only for staff — no add / edit / archive actions.
 - Only *business* settings are hidden; staff keep *personal* settings (theme,
   change password, sign out).
+
+## The staff dashboard
+
+The staff home is its own screen (`staff_dashboard_screen.dart`), not the owner's
+dashboard with cards hidden. It is built from `GET /dashboard/summary`, which the
+server scopes to the staff member's `created_by_user_id`, and it leads with:
+
+- **Greeting + staff code** — the permanent code is shown and copyable, so an
+  activated staff can hand it over or sign in on another device.
+- **Their money** — a range switch over *Today / 7 days / Month / All time*,
+  each with gross sales, collected and outstanding. The server buckets the day in
+  the client's timezone (`tz_offset_minutes`).
+- **Quick actions** — New sale, Add customer, Products (read-only) and Import
+  sale (the AI/Chat screenshot flow).
+- **Needs attention** — their unpaid sales and deliveries waiting or on the road.
+- **Recent sales** — only the sales they personally recorded.
+- **Top products** — the five products they sell most, by quantity.
+- **Delivery desk** — pending, active and failed deliveries for the business.
+- **Your shop** — the business card and catalog counts; tapping opens the
+  read-only catalog.
+
+The owner's wallet, business-wide report, business-details editor and staff
+management never appear on this page.
 
 ## Sales, attribution and money
 
@@ -233,7 +256,7 @@ their own sales, and editing/cancelling is refused for staff (notes only).
 | Code page | Staff | Enter + verify the code |
 | Details page | Staff | Confirm name + set password |
 | Sign-in page | Staff | Everyday login with code + password |
-| Dashboard (staff shell) | Staff | Own sales + amounts only; **no** business-details button |
+| Dashboard (staff shell) | Staff | Own sales + amounts; today / 7 days / month / all-time, top products, delivery desk; copyable code; **no** business-details button |
 | Products (staff) | Staff | View-only — no add / edit / archive |
 | Customers (staff) | Staff | Add-only — no edit / delete |
 | Sale detail (staff) | Staff | View + add notes; no edit / cancel |

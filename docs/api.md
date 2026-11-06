@@ -388,6 +388,32 @@ requires the owner.
 }
 ```
 
+A staff member calling `/summary` is scoped to the sales they recorded
+(`created_by_user_id`), and the response gains three extra keys:
+
+```jsonc
+{
+  // ...the same totals/counts/catalog/recent as the owner, but staff-scoped...
+  "staff": {
+    "id": "…", "fullName": "Musa Bello", "phone": null,
+    "staffCode": "ABC47-03", "status": "active",
+    "activatedAt": "2026-01-02T00:00:00.000Z", "salesCount": 12
+  },
+  "periods": {
+    "today":   { "transactionCount": 3, "grossSalesKobo": 4500000, "collectedKobo": 3000000, "outstandingKobo": 1500000 },
+    "week":    { /* last 7 days, including today */ },
+    "month":   { /* this calendar month */ },
+    "allTime": { /* the staff member's whole history */ }
+  },
+  "topProducts": [ { "name": "Blue Bag", "quantity": 4, "revenueKobo": 6000000 } ]
+}
+```
+
+`today`, `week` and `month` are bucketed in the caller's own day: the client
+sends `?tz_offset_minutes=60` (minutes east of UTC), so a sale at 00:30 in Lagos
+is not filed under yesterday. `topProducts` is the five products that staff
+member sold in the greatest quantity, excluding cancelled sales.
+
 Two decisions worth knowing before reading a number:
 
 - **A cancelled transaction is excluded from every money total**, because

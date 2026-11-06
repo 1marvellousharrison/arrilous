@@ -39,6 +39,120 @@ class LogisticsSummary {
       nearbyRiders == 0;
 }
 
+/// The signed-in staff member, as the dashboard needs them: who they are and
+/// the permanent code the owner handed over.
+class StaffSnapshot {
+  const StaffSnapshot({
+    required this.id,
+    required this.fullName,
+    required this.staffCode,
+    required this.status,
+    required this.salesCount,
+    this.phone,
+    this.activatedAt,
+  });
+
+  factory StaffSnapshot.fromJson(Map<String, dynamic> json) => StaffSnapshot(
+        id: json['id'] as String? ?? '',
+        fullName: json['fullName'] as String? ?? '',
+        phone: json['phone'] as String?,
+        staffCode: json['staffCode'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        activatedAt: json['activatedAt'] as String?,
+        salesCount: (json['salesCount'] as num?)?.toInt() ?? 0,
+      );
+
+  final String id;
+  final String fullName;
+  final String? phone;
+  final String staffCode;
+  final String status;
+  final String? activatedAt;
+  final int salesCount;
+
+  bool get isActive => status == 'active';
+}
+
+/// The money for one date range on the staff dashboard.
+class SalesPeriodTotals {
+  const SalesPeriodTotals({
+    required this.transactionCount,
+    required this.grossSalesKobo,
+    required this.collectedKobo,
+    required this.outstandingKobo,
+  });
+
+  factory SalesPeriodTotals.fromJson(Map<String, dynamic> json) => SalesPeriodTotals(
+        transactionCount: (json['transactionCount'] as num?)?.toInt() ?? 0,
+        grossSalesKobo: (json['grossSalesKobo'] as num?)?.toInt() ?? 0,
+        collectedKobo: (json['collectedKobo'] as num?)?.toInt() ?? 0,
+        outstandingKobo: (json['outstandingKobo'] as num?)?.toInt() ?? 0,
+      );
+
+  static const empty = SalesPeriodTotals(
+    transactionCount: 0,
+    grossSalesKobo: 0,
+    collectedKobo: 0,
+    outstandingKobo: 0,
+  );
+
+  final int transactionCount;
+  final int grossSalesKobo;
+  final int collectedKobo;
+  final int outstandingKobo;
+}
+
+/// Today / last seven days / this month / all time, computed server-side in the
+/// staff member's own timezone.
+class SalesPeriods {
+  const SalesPeriods({
+    required this.today,
+    required this.week,
+    required this.month,
+    required this.allTime,
+  });
+
+  factory SalesPeriods.fromJson(Map<String, dynamic> json) {
+    SalesPeriodTotals read(String key) {
+      final value = json[key];
+      return value is Map<String, dynamic>
+          ? SalesPeriodTotals.fromJson(value)
+          : SalesPeriodTotals.empty;
+    }
+
+    return SalesPeriods(
+      today: read('today'),
+      week: read('week'),
+      month: read('month'),
+      allTime: read('allTime'),
+    );
+  }
+
+  final SalesPeriodTotals today;
+  final SalesPeriodTotals week;
+  final SalesPeriodTotals month;
+  final SalesPeriodTotals allTime;
+}
+
+/// One product a staff member sells most often.
+class ProductLeader {
+  const ProductLeader({
+    required this.name,
+    required this.quantity,
+    required this.revenueKobo,
+  });
+
+  factory ProductLeader.fromJson(Map<String, dynamic> json) => ProductLeader(
+        name: json['name'] as String? ?? '',
+        quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+        revenueKobo: (json['revenueKobo'] as num?)?.toInt() ?? 0,
+      );
+
+  final String name;
+  final int quantity;
+  final int revenueKobo;
+}
+
 /// The Phase 12 dashboard figures, straight from the database.
 ///
 /// Every number here is an aggregate the API computed. The dashboard never
@@ -61,6 +175,9 @@ class DashboardSummary {
     required this.customerCount,
     required this.logistics,
     required this.recent,
+    this.staff,
+    this.periods,
+    this.topProducts = const [],
   });
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
@@ -68,6 +185,9 @@ class DashboardSummary {
     final counts = (json['counts'] as Map<String, dynamic>?) ?? const {};
     final catalog = (json['catalog'] as Map<String, dynamic>?) ?? const {};
     final recent = (json['recent'] as List?) ?? const [];
+    final staff = json['staff'];
+    final periods = json['periods'];
+    final topProducts = (json['topProducts'] as List?) ?? const [];
 
     return DashboardSummary(
       transactionCount: (totals['transactionCount'] as num?)?.toInt() ?? 0,
@@ -89,6 +209,12 @@ class DashboardSummary {
       recent: recent
           .whereType<Map<String, dynamic>>()
           .map(Transaction.fromJson)
+          .toList(growable: false),
+      staff: staff is Map<String, dynamic> ? StaffSnapshot.fromJson(staff) : null,
+      periods: periods is Map<String, dynamic> ? SalesPeriods.fromJson(periods) : null,
+      topProducts: topProducts
+          .whereType<Map<String, dynamic>>()
+          .map(ProductLeader.fromJson)
           .toList(growable: false),
     );
   }
@@ -115,6 +241,12 @@ class DashboardSummary {
   final LogisticsSummary logistics;
 
   final List<Transaction> recent;
+
+  /// Staff-only. Absent on the owner's summary, which is how the app tells the
+  /// two dashboards apart without trusting the client role.
+  final StaffSnapshot? staff;
+  final SalesPeriods? periods;
+  final List<ProductLeader> topProducts;
 
   bool get isEmpty => transactionCount == 0 && cancelled == 0;
 
@@ -145,7 +277,13 @@ class DashboardRepository extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _api.get('/dashboard/summary', token: _token);
+      // The server buckets "today" in the staff member's own day; send the
+      // offset so a sale at 00:30 in Lagos is not filed under yesterday (UTC).
+      final offset = DateTime.now().timeZoneOffset.inMinutes;
+      final data = await _api.get(
+        '/dashboard/summary?tz_offset_minutes=$offset',
+        token: _token,
+      );
       _summary = DashboardSummary.fromJson(data as Map<String, dynamic>);
     } on ApiException catch (error) {
       _error = error.message;

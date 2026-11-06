@@ -30,6 +30,7 @@ import '../../widgets/pwa_install_prompt.dart';
 import 'ai_chat_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'dashboard_screen.dart';
+import 'staff_dashboard_screen.dart';
 
 /// The authenticated shell for a business account.
 ///
@@ -310,20 +311,33 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   Widget _tabs() {
     return switch (_index) {
       0 => PwaInstallPrompt(
-          child: DashboardScreen(
-            dashboard: widget.dashboard,
-            business: widget.business,
-            transactions: widget.transactions,
-            catalog: widget.catalog,
-            customers: widget.customers,
-            onOpenTransaction: _openTransaction,
-            onManualEntry: _manualTransaction,
-            onSeeAllTransactions: () => _onTab(1),
-            onAddProduct: _addProduct,
-            onAddCustomer: _addCustomer,
-            onGoToAiChat: () => _onTab(2),
-            canAddProduct: !_isStaff,
-          ),
+          child: _isStaff
+              ? StaffDashboardScreen(
+                  dashboard: widget.dashboard,
+                  business: widget.business,
+                  user: widget.user,
+                  onOpenTransaction: _openTransaction,
+                  onManualEntry: _manualTransaction,
+                  onSeeAllTransactions: () => _onTab(1),
+                  onAddCustomer: _addCustomer,
+                  onOpenProducts: _openProducts,
+                  onGoToAiChat: () => _onTab(2),
+                  onGoToLogistics: () => _onTab(3),
+                )
+              : DashboardScreen(
+                  dashboard: widget.dashboard,
+                  business: widget.business,
+                  transactions: widget.transactions,
+                  catalog: widget.catalog,
+                  customers: widget.customers,
+                  onOpenTransaction: _openTransaction,
+                  onManualEntry: _manualTransaction,
+                  onSeeAllTransactions: () => _onTab(1),
+                  onAddProduct: _addProduct,
+                  onAddCustomer: _addCustomer,
+                  onGoToAiChat: () => _onTab(2),
+                  canAddProduct: !_isStaff,
+                ),
         ),
       1 => TransactionsScreen(
           transactions: widget.transactions,

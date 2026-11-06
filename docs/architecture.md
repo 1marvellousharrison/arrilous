@@ -196,6 +196,15 @@ count. The reasoning is in `routes/dashboard.js`: a cancelled sale did not happe
 so counting it as revenue would overstate what the business earned, while hiding
 it entirely would lose the fact that it was cancelled.
 
+A staff member reads the same endpoint, but `routes/dashboard.js` adds
+`AND created_by_user_id = ?` to every transaction aggregate, so their home shows
+only the sales they recorded. Their response also carries `staff` (code and
+status), `periods` (today / last 7 days / this month / all time) and
+`topProducts`; the app renders these in `staff_dashboard_screen.dart` instead of
+the owner's dashboard. Day boundaries are shifted by the client's
+`tz_offset_minutes`, because the server stores UTC and the staff sells in local
+time.
+
 ## Error contract
 
 ```json

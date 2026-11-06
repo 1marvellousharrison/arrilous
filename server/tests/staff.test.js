@@ -1,6 +1,11 @@
-import test, { describe } from 'node:test';
+import test, { describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { api, createBusinessOwner, openBusinessEdit } from './helpers.js';
+import { resetRateLimits } from '../src/middleware/rateLimit.js';
+
+afterEach(() => {
+  resetRateLimits();
+});
 
 /**
  * Staff accounts (docs/staff-accounts.md).
@@ -299,6 +304,43 @@ describe('staff accounts — scoped access', () => {
     const ownerDash = await api('GET', '/dashboard/summary', { token: owner.token });
     assert.equal(ownerDash.body.totals.transactionCount, 2);
     assert.equal(ownerDash.body.totals.grossSalesKobo, 13000);
+  });
+
+  test('the staff dashboard carries their code, periods and top products', async () => {
+    const owner = await createBusinessOwner('Staff Home Store');
+    const staff = await staffSession(owner, 'Home Staff');
+
+    await recordSale(staff.token, 5000);
+    const bag = await api('POST', '/transactions', {
+      token: staff.token,
+      body: { items: [{ name: 'Blue Bag', unit_price_kobo: 2000, quantity: 3 }] },
+    });
+    assert.equal(bag.status, 201, JSON.stringify(bag.body));
+    // The owner's sale belongs on the owner's report, not on this page.
+    await recordSale(owner.token, 8000);
+
+    const res = await api('GET', '/dashboard/summary?tz_offset_minutes=60', {
+      token: staff.token,
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+
+    assert.equal(res.body.staff.staffCode, staff.staff.staffCode);
+    assert.equal(res.body.staff.fullName, 'Home Staff');
+    assert.equal(res.body.staff.status, 'active');
+
+    assert.equal(res.body.periods.today.transactionCount, 2);
+    assert.equal(res.body.periods.today.grossSalesKobo, 11_000);
+    assert.equal(res.body.periods.week.grossSalesKobo, 11_000);
+    assert.equal(res.body.periods.month.grossSalesKobo, 11_000);
+    assert.equal(res.body.periods.allTime.grossSalesKobo, 11_000);
+
+    assert.equal(res.body.topProducts[0].name, 'Blue Bag');
+    assert.equal(res.body.topProducts[0].quantity, 3);
+    assert.equal(res.body.topProducts[0].revenueKobo, 6_000);
+
+    const ownerDash = await api('GET', '/dashboard/summary', { token: owner.token });
+    assert.equal(ownerDash.body.staff, undefined, 'the owner does not get a staff block');
+    assert.equal(ownerDash.body.periods, undefined);
   });
 });
 
