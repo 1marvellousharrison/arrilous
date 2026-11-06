@@ -264,18 +264,23 @@ describe('staff accounts — scoped access', () => {
     assert.equal(edited.status, 403);
   });
 
-  test('a staff cannot reach business details or staff management', async () => {
+  test('a staff can read the business but cannot change it or manage staff', async () => {
     const owner = await createBusinessOwner('Hidden Store');
     const staff = await staffSession(owner, 'Hidden Staff');
+
+    // The staff shell needs the shop name, logo and location to render.
+    const business = await api('GET', '/business', { token: staff.token });
+    assert.equal(business.status, 200, JSON.stringify(business.body));
+    assert.equal(business.body.business.businessName, 'Hidden Store');
+
+    const location = await api('GET', '/business/location', { token: staff.token });
+    assert.equal(location.status, 200, JSON.stringify(location.body));
 
     const patchBusiness = await api('PATCH', '/business', {
       token: staff.token,
       body: { business_name: 'Taken Over' },
     });
     assert.equal(patchBusiness.status, 403);
-
-    const location = await api('GET', '/business/location', { token: staff.token });
-    assert.equal(location.status, 403);
 
     const managing = await api('GET', '/staff', { token: staff.token });
     assert.equal(managing.status, 403);

@@ -207,7 +207,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           );
         }
 
-        if (business.needsSetup) {
+        // Setup is the owner's job. A staff member belongs to a business that
+        // already exists, even if the owner has not filled in its location yet;
+        // sending them through the setup form would offer a write the server
+        // refuses.
+        if (business.needsSetup && !_isStaff) {
           return BusinessSetupFlow(
             business: business,
             onComplete: business.load,

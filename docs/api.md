@@ -225,6 +225,10 @@ field.
 | `GET` | `/business/location` | `{ location: null }` until set |
 | `PUT` | `/business/location` | upsert; replaces the existing row |
 
+A staff member may read `GET /business` and `GET /business/location` so their
+shell can show the shop's name, logo and pickup address. Every write above stays
+owner-only, and `POST /business` still returns `403` for a staff session.
+
 Body: `address` (required), `area`, `city`, `state`, `country`, `latitude`,
 `longitude`. `area` is the neighbourhood the shop sits in, kept beside the
 street because the delivery partner and rider work from city/area/state — the

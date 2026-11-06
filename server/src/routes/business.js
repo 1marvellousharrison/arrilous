@@ -3,7 +3,14 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { queryOne, run } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusinessOwner, requireBusiness, requireOwner, requireBusinessEditToken, findBusinessForUser } from '../middleware/business.js';
+import {
+  requireBusinessOwner,
+  requireBusiness,
+  requireOwner,
+  requireBusinessEditToken,
+  findBusinessForUser,
+  findStaffContextForUser,
+} from '../middleware/business.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import {
   conflict,
@@ -11,6 +18,7 @@ import {
   tooManyRequests,
   badRequest,
   notFound,
+  forbidden,
   serviceUnavailable,
 } from '../lib/errors.js';
 import { randomDigits, sha256 } from '../lib/password.js';
@@ -147,9 +155,28 @@ async function upsertLocation(businessId, body) {
 
 // The caller's own business, or null before setup. The client uses this to
 // decide whether to send a new owner through business setup.
-businessRouter.get('/', requireAuth, requireBusinessOwner, async (req, res) => {
-  const business = await findBusinessForUser(req.auth.userId);
-  res.json({ business: await businessWithLocation(business) });
+//
+// A staff member reads the same profile: their shell needs the shop's name,
+// logo and location, and their profile tab shows it. Writing it stays owner-only.
+businessRouter.get('/', requireAuth, async (req, res, next) => {
+  try {
+    if (req.auth.role === 'business') {
+      const business = await findBusinessForUser(req.auth.userId);
+      return res.json({ business: await businessWithLocation(business) });
+    }
+
+    if (req.auth.role === 'staff') {
+      const context = await findStaffContextForUser(req.auth.userId);
+      if (!context || context.staff.status !== 'active') {
+        throw forbidden('This staff account is not active.');
+      }
+      return res.json({ business: await businessWithLocation(context.business) });
+    }
+
+    throw forbidden('This area is only available to business accounts.');
+  } catch (error) {
+    return next(error);
+  }
 });
 
 businessRouter.post('/', requireAuth, requireBusinessOwner, async (req, res) => {
@@ -198,7 +225,7 @@ businessRouter.patch(
   }
 );
 
-businessRouter.get('/location', requireAuth, requireBusiness, requireOwner, async (req, res) => {
+businessRouter.get('/location', requireAuth, requireBusiness, async (req, res) => {
   const location = await queryOne(
     'SELECT * FROM business_locations WHERE business_id = ?',
     req.business.id

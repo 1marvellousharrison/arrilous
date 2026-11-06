@@ -28,7 +28,7 @@ Build order: [`phase_build_prompt.md`](phase_build_prompt.md)
 | 13 | Security / tenant isolation | Done — ownership resolved from the token, cross-tenant tests in every suite |
 | 14 | Future integration architecture | Done — inert `services/` boundaries: WhatsApp, Payment, Logistics, Notification |
 | 15 | Business rules & validation | Done — Zod schemas, transition table, cross-axis rules, ownership checks |
-| 16 | Testing | Done - 294 server tests, 223 Flutter tests (see below) |
+| 16 | Testing | Done - 294 server tests, 224 Flutter tests (see below) |
 | 17 | Development seed data | Done — `npm run seed` builds the ABC Fashion Store scenarios + a logistics network |
 | 18 | Documentation | Done — architecture, schema, API, environment, integrations |
 | — | **Integrated spec v3 (logistics)** | Done — org/rider accounts, availability, fleet, pricing, matching, delivery lifecycle, business/partner/rider dashboards, in-app notifications |
@@ -137,7 +137,7 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api/v1   # physi
 
 ```bash
 cd server && npm test     # 294 tests
-cd app    && flutter test # 223 tests
+cd app    && flutter test # 224 tests
 cd app    && flutter analyze
 ```
 

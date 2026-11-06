@@ -549,7 +549,10 @@ void main() {
           },
         };
 
-    Future<void> pumpStaffShell(WidgetTester tester) async {
+    Future<void> pumpStaffShell(
+      WidgetTester tester, {
+      Map<String, Object?>? profile,
+    }) async {
       tester.view.physicalSize = const Size(1000, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -558,7 +561,9 @@ void main() {
         if (request.url.path.endsWith('/auth/login')) {
           return json(sessionBody(role: 'staff'));
         }
-        if (request.url.path.endsWith('/business')) return json(businessProfile());
+        if (request.url.path.endsWith('/business')) {
+          return json(profile ?? businessProfile());
+        }
         return json(<String, Object>{});
       });
       final api = ApiClient(baseUrl: base, client: client);
@@ -614,6 +619,19 @@ void main() {
       expect(find.text('Customers'), findsOneWidget);
       expect(find.text('Wallet'), findsNothing, reason: 'the wallet is the owner\'s');
       expect(find.text('Staff'), findsNothing, reason: 'staff do not manage staff');
+    });
+
+    testWidgets('a shop without a location still lands on the staff home', (tester) async {
+      // The owner may not have finished setup. That is the owner's form to fill
+      // in: a staff belongs to a business that already exists, so they get their
+      // own home instead of a setup screen whose writes the server refuses.
+      final profile = businessProfile();
+      (profile['business'] as Map<String, Object?>)['location'] = null;
+
+      await pumpStaffShell(tester, profile: profile);
+
+      expect(find.text('Quick actions'), findsOneWidget);
+      expect(find.text('Cannot reach your business yet'), findsNothing);
     });
   });
 }

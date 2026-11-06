@@ -56255,7 +56255,7 @@ A.aED.prototype={
 $2(a,b){var s,r,q=null,p="Settings",o=this.a,n=o.a,m=n.d,l=m.f
 if(l!=null&&m.c==null)return new A.a43(l,m.geJ(),n.ax,q)
 if(!(m.e&&!m.d))return B.a0x
-if(m.gHI())return A.aZc(m,q,m.geJ())
+if(m.gHI()&&n.c.e!=="staff")return A.aZc(m,q,m.geJ())
 n=m.c
 s=n==null?q:A.vU(n.c)
 if(s==null)s=""
