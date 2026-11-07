@@ -62,13 +62,31 @@ notificationsRouter.patch('/:id/read', async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Opening the inbox is itself the act of reading it, so the routine alerts are
+ * cleared without the owner tapping each one. Two kinds deliberately survive:
+ *
+ *  - low-stock alerts, which stay in the shelf count until the product is
+ *    actually restocked (or archived);
+ *  - errors, which mean something went wrong and should not disappear just
+ *    because the page was opened.
+ *
+ * `include_important: true` remains available for an explicit "clear everything"
+ * request.
+ */
 notificationsRouter.post('/read-all', async (req, res) => {
+  const includeImportant = req.body?.include_important === true;
+  const importantClause = includeImportant
+    ? ''
+    : " AND type <> 'low_stock' AND severity <> 'error'";
   await run(
-    'UPDATE notifications SET read_at = ? WHERE business_id = ? AND read_at IS NULL',
+    `UPDATE notifications
+        SET read_at = ?
+      WHERE business_id = ? AND read_at IS NULL${importantClause}`,
     now(),
     req.business.id
   );
-  res.json({ ok: true });
+  res.json({ ok: true, keptImportant: !includeImportant });
 });
 
 export default notificationsRouter;

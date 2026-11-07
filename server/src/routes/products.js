@@ -7,6 +7,7 @@ import { conflict, notFound, validationFailed, badRequest } from '../lib/errors.
 import {
   productCreateSchema,
   productUpdateSchema,
+  productRestockSchema,
   productListQuerySchema,
   toFieldErrors,
 } from '../lib/validators.js';
@@ -157,6 +158,32 @@ productRouter.patch('/:id', requireOwner, async (req, res) => {
     await syncLowStockNotifications(req.business.id);
   }
 
+  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
+});
+
+/**
+ * Restock adds units to the shelf. The owner types how many arrived, not a new
+ * total, so the server does the arithmetic and a product at 40 becoming "add 12"
+ * ends at 52 without the owner having to remember the old figure.
+ *
+ * The increment happens in one UPDATE, so two restocks racing each other both
+ * land instead of one overwriting the other.
+ */
+productRouter.post('/:id/restock', requireOwner, async (req, res) => {
+  const body = parse(productRestockSchema, req.body);
+  const existing = await findOwnedProduct(req.business.id, req.params.id);
+
+  await run(
+    `UPDATE products
+        SET stock_quantity = stock_quantity + ?, updated_at = ?
+      WHERE id = ?`,
+    body.quantity,
+    new Date().toISOString(),
+    existing.id
+  );
+  // More stock usually clears the warning; the sync decides that from the new
+  // figure rather than the client guessing.
+  await syncLowStockNotifications(req.business.id);
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 

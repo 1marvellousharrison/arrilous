@@ -7,6 +7,7 @@ import 'core/state/business_repository.dart';
 import 'core/state/catalog_repository.dart';
 import 'core/state/customer_repository.dart';
 import 'core/state/dashboard_repository.dart';
+import 'core/state/analytics_repository.dart';
 import 'core/state/logistics_repository.dart';
 import 'core/state/staff_repository.dart';
 import 'core/state/theme_controller.dart';
@@ -69,6 +70,7 @@ class _BizinessAppState extends State<BizinessApp> {
   late final TransactionRepository _transactions =
       TransactionRepository(_api, _auth);
   late final DashboardRepository _dashboard = DashboardRepository(_api, _auth);
+  late final AnalyticsRepository _analytics = AnalyticsRepository(_api, _auth);
   late final LogisticsRepository _logistics = LogisticsRepository(_api, _auth);
   late final WalletRepository _wallet = WalletRepository(_api, _auth);
   late final StaffRepository _staff = StaffRepository(_api, _auth);
@@ -82,6 +84,7 @@ class _BizinessAppState extends State<BizinessApp> {
         _customers,
         _transactions,
         _dashboard,
+        _analytics,
         _logistics,
         _wallet,
         _staff,
@@ -96,11 +99,18 @@ class _BizinessAppState extends State<BizinessApp> {
   @override
   void initState() {
     super.initState();
+    // These two repositories were built before the restored session was known,
+    // so they captured a null token and every request returned early: the chat
+    // and the notification bell stayed empty until a full page reload re-created
+    // them. Following the auth state keeps them in step with sign-in, restore
+    // and sign-out instead.
+    _auth.addListener(_syncAuthTokens);
     _bootstrap();
   }
 
   @override
   void dispose() {
+    _auth.removeListener(_syncAuthTokens);
     for (final repository in _scopedRepositories) {
       repository.dispose();
     }
@@ -109,12 +119,19 @@ class _BizinessAppState extends State<BizinessApp> {
     super.dispose();
   }
 
+  void _syncAuthTokens() {
+    final token = _auth.session?.accessToken;
+    _ai.updateToken(token);
+    _appNotifications.updateToken(token);
+  }
+
   Future<void> _bootstrap() async {
     // Never strand the app on the splash: whatever happens while restoring the
     // cached theme and session, hand control to the root (sign-in) screen.
     try {
       await Future.wait([_theme.load(), _auth.restore()]);
     } finally {
+      _syncAuthTokens();
       if (mounted) setState(() => _booting = false);
     }
   }
@@ -140,6 +157,7 @@ class _BizinessAppState extends State<BizinessApp> {
                   customers: _customers,
                   transactions: _transactions,
                   dashboard: _dashboard,
+                  analytics: _analytics,
                   logistics: _logistics,
                   wallet: _wallet,
                   staff: _staff,
@@ -160,6 +178,7 @@ class _BizinessAppState extends State<BizinessApp> {
     _customers.reset();
     _transactions.reset();
     _dashboard.reset();
+    _analytics.reset();
     _logistics.reset();
     _wallet.reset();
     _staff.reset();
@@ -226,6 +245,7 @@ class _Root extends StatelessWidget {
     required this.customers,
     required this.transactions,
     required this.dashboard,
+    required this.analytics,
     required this.logistics,
     required this.wallet,
     required this.staff,
@@ -242,6 +262,7 @@ class _Root extends StatelessWidget {
   final CustomerRepository customers;
   final TransactionRepository transactions;
   final DashboardRepository dashboard;
+  final AnalyticsRepository analytics;
   final LogisticsRepository logistics;
   final WalletRepository wallet;
   final StaffRepository staff;
@@ -301,6 +322,7 @@ class _Root extends StatelessWidget {
           customers: customers,
           transactions: transactions,
           dashboard: dashboard,
+          analytics: analytics,
           logistics: logistics,
           wallet: wallet,
           staff: staff,

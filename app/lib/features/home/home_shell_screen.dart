@@ -12,9 +12,11 @@ import '../../core/state/staff_repository.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/state/wallet_repository.dart';
 import '../../core/state/ai_repository.dart';
+import '../../core/state/analytics_repository.dart';
 import '../../core/state/app_notifications_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../analytics/analytics_screen.dart';
 import '../business/business_edit_gate.dart';
 import '../business/business_setup_flow.dart';
 import '../customers/customer_form_screen.dart';
@@ -26,6 +28,7 @@ import '../transactions/new_transaction_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
 import '../transactions/transactions_screen.dart';
 import '../logistics/business_logistics_screen.dart';
+import '../logistics/delivery_request_detail_screen.dart';
 import '../logistics/delivery_requests_list_screen.dart';
 import '../logistics/notifications_screen.dart';
 import '../../widgets/pwa_install_prompt.dart';
@@ -52,6 +55,7 @@ class HomeShellScreen extends StatefulWidget {
     required this.customers,
     required this.transactions,
     required this.dashboard,
+    this.analytics,
     required this.logistics,
     required this.wallet,
     required this.staff,
@@ -68,6 +72,10 @@ class HomeShellScreen extends StatefulWidget {
   final CustomerRepository customers;
   final TransactionRepository transactions;
   final DashboardRepository dashboard;
+
+  /// Owner-only business analysis. Optional so the shell can be built without
+  /// it (and tests need not construct one) while production always supplies it.
+  final AnalyticsRepository? analytics;
   final LogisticsRepository logistics;
   final WalletRepository wallet;
   final StaffRepository staff;
@@ -471,6 +479,10 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           business: widget.business,
           logistics: widget.logistics,
           appNotifications: widget.appNotifications,
+          analytics: widget.analytics,
+          onOpenTransaction: _viewTransactionId,
+          onOpenImport: _openImportFromNotification,
+          onOpenDeliveryRequest: _openDeliveryFromNotification,
           isStaff: _isStaff,
         ),
     };
@@ -584,7 +596,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
-  Future<void> _openProducts() async {
+  Future<void> _openProducts({bool lowStockOnly = false}) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => ProductsScreen(
@@ -592,6 +604,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           businessName: widget.business.business?.displayName ?? '',
           readOnly: _isStaff,
           lowStockProducts: widget.appNotifications.lowStockProducts,
+          initialLowStockOnly: lowStockOnly,
         ),
       ),
     );
@@ -616,6 +629,37 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       builder: (_) => StaffScreen(staff: widget.staff),
     ),
   );
+
+  /// An order alert about a draft belongs in the AI/Chats tab. The notification
+  /// page sits on top of the shell, so it is closed first, then the tab is
+  /// selected and the same review screen the chat uses is opened.
+  void _openImportFromNotification(String importId) {
+    Navigator.of(context).pop();
+    setState(() => _index = 2);
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CompleteImportScreen(
+          ai: widget.ai,
+          catalog: widget.catalog,
+          customers: widget.customers,
+          importId: importId,
+          onViewTransaction: _viewTransactionId,
+        ),
+      ),
+    );
+  }
+
+  void _openDeliveryFromNotification(String requestId) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DeliveryRequestDetailScreen(
+          logistics: widget.logistics,
+          requestId: requestId,
+          role: 'business',
+        ),
+      ),
+    );
+  }
 }
 
 /// The Profile tab: the shop's own details first, then the two doorways into
@@ -631,16 +675,24 @@ class _ProfileScreen extends StatefulWidget {
     required this.business,
     required this.logistics,
     required this.appNotifications,
+    this.analytics,
+    required this.onOpenTransaction,
+    required this.onOpenImport,
+    required this.onOpenDeliveryRequest,
     required this.isStaff,
   });
 
   final VoidCallback onOpenSettings;
-  final Future<void> Function() onProducts;
+  final Future<void> Function({bool lowStockOnly}) onProducts;
   final Future<void> Function() onCustomers;
   final Future<void> Function() onStaff;
   final BusinessRepository business;
   final LogisticsRepository logistics;
   final AppNotificationsRepository appNotifications;
+  final AnalyticsRepository? analytics;
+  final ValueChanged<String> onOpenTransaction;
+  final ValueChanged<String> onOpenImport;
+  final ValueChanged<String> onOpenDeliveryRequest;
   final bool isStaff;
 
   @override
@@ -667,9 +719,23 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           builder: (_) => NotificationsScreen(
             logistics: widget.logistics,
             appNotifications: widget.appNotifications,
+            onOpenProduct: (_) => widget.onProducts(lowStockOnly: true),
+            onOpenTransaction: widget.onOpenTransaction,
+            onOpenImport: widget.onOpenImport,
+            onOpenDeliveryRequest: widget.onOpenDeliveryRequest,
           ),
         ),
       );
+
+  Future<void> _openAnalytics() {
+    final analytics = widget.analytics;
+    if (analytics == null) return Future<void>.value();
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => AnalyticsScreen(repository: analytics),
+      ),
+    );
+  }
 
   Future<void> _openAllRequests() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -723,6 +789,13 @@ class _ProfileScreenState extends State<_ProfileScreen> {
             ),
             ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
             ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
+            if (!widget.isStaff && widget.analytics != null)
+              ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: const Text('Business analysis'),
+                subtitle: const Text('Sales, customers, stock and delivery in one view'),
+                onTap: _openAnalytics,
+              ),
             if (!widget.isStaff)
               ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
             ListTile(
@@ -769,7 +842,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
       color: AppColors.danger.withValues(alpha: 0.07),
       borderColor: AppColors.danger.withValues(alpha: 0.45),
       padding: const EdgeInsets.all(AppSpacing.md),
-      onTap: () => widget.onProducts(),
+      onTap: () => widget.onProducts(lowStockOnly: true),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -823,7 +896,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
-                    onPressed: () => widget.onProducts(),
+                    onPressed: () => widget.onProducts(lowStockOnly: true),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,

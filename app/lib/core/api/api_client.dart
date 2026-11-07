@@ -130,7 +130,11 @@ class ApiClient {
   ApiClient({
     required this.baseUrl,
     http.Client? client,
-    this.timeout = const Duration(seconds: 15),
+    // A free-tier backend can be asleep when the app is opened. Fifteen seconds
+    // was shorter than a cold start, so the first screens (AI/Chats, Customers)
+    // failed while later attempts succeeded. A GET now waits long enough for the
+    // instance to wake and retries once if the connection failed outright.
+    this.timeout = const Duration(seconds: 30),
     this.onUnauthorized,
   }) : _client = client ?? http.Client();
 
@@ -150,8 +154,17 @@ class ApiClient {
     String? token,
     Map<String, String>? headers,
     Duration? timeout,
-  }) =>
-      _send('GET', path, token: token, headers: headers, timeout: timeout);
+  }) async {
+    try {
+      return await _send('GET', path, token: token, headers: headers, timeout: timeout);
+    } on NetworkException {
+      // Reads are safe to repeat. A sleeping host often drops the connection
+      // that woke it, so one quiet retry turns a cold start into a slow load
+      // instead of an empty screen.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      return _send('GET', path, token: token, headers: headers, timeout: timeout);
+    }
+  }
 
   Future<dynamic> post(
     String path, {

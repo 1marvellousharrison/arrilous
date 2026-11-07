@@ -179,6 +179,20 @@ class CatalogRepository extends ChangeNotifier {
     );
   }
 
+  /// Adds units to the shelf. The server does the arithmetic, so the owner
+  /// enters only what arrived and never has to remember the previous count.
+  Future<Product> restock(String id, int quantity) async {
+    final data = await _api.post(
+      '/products/$id/restock',
+      token: _token,
+      body: {'quantity': quantity},
+    );
+    await load();
+    return Product.fromJson(
+      (data as Map<String, dynamic>)['product'] as Map<String, dynamic>,
+    );
+  }
+
   Future<void> setArchived(String id, bool archived) async {
     await _api.post(
       '/products/$id/${archived ? 'archive' : 'restore'}',

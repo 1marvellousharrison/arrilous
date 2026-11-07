@@ -28,6 +28,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Timer? _debounce;
 
   @override
+  void initState() {
+    super.initState();
+    // The customer list is its own screen. Relying on another screen to have
+    // loaded it first left the first visit empty until the owner opened a sale
+    // form; the page now fetches whenever it is opened.
+    widget.customers.load();
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();

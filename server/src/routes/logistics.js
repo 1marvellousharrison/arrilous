@@ -306,6 +306,15 @@ logisticsRouter.get('/notifications', async (req, res) => {
   res.json({ notifications, unreadCount: notifications.filter((item) => !item.readAt).length });
 });
 
+logisticsRouter.post('/notifications/read-all', async (req, res) => {
+  await run(
+    'UPDATE logistics_notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL',
+    new Date().toISOString(),
+    req.auth.userId
+  );
+  res.json({ ok: true });
+});
+
 logisticsRouter.patch('/notifications/:id/read', async (req, res) => {
   await run('UPDATE logistics_notifications SET read_at = ? WHERE id = ? AND user_id = ?', new Date().toISOString(), req.params.id, req.auth.userId);
   res.status(204).end();

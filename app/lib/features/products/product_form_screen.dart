@@ -233,6 +233,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   labelText: 'Stock quantity',
                   hintText: '0',
                   errorText: _fieldErrors['stock_quantity'],
+                  helperText: _isEditing
+                      ? 'Adding new stock? Use + on the product list instead of editing this number.'
+                      : null,
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) return 'Enter a stock quantity.';

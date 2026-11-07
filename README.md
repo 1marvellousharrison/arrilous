@@ -28,7 +28,7 @@ Build order: [`phase_build_prompt.md`](phase_build_prompt.md)
 | 13 | Security / tenant isolation | Done — ownership resolved from the token, cross-tenant tests in every suite |
 | 14 | Future integration architecture | Done — inert `services/` boundaries: WhatsApp, Payment, Logistics, Notification |
 | 15 | Business rules & validation | Done — Zod schemas, transition table, cross-axis rules, ownership checks |
-| 16 | Testing | Done - 302 server tests, 228 Flutter tests (see below) |
+| 16 | Testing | Done - 308 server tests, 228 Flutter tests (see below) |
 | 17 | Development seed data | Done — `npm run seed` builds the ABC Fashion Store scenarios + a logistics network |
 | 18 | Documentation | Done — architecture, schema, API, environment, integrations |
 | — | **Integrated spec v3 (logistics)** | Done — org/rider accounts, availability, fleet, pricing, matching, delivery lifecycle, business/partner/rider dashboards, in-app notifications |
@@ -47,7 +47,9 @@ Two boundaries worth stating outright rather than leaving to be discovered:
   owner ("the business owner can verify stock first") and lists automated stock
   as a future feature, so the app refuses to let an owner pick an out-of-stock
   product in the picker but neither the client nor the API adjusts
-  `stock_quantity`. Restock remains a product edit.
+  `stock_quantity`. Restocking is its own action: `POST /products/:id/restock`
+  adds the units that arrived to the current count, so the owner never replaces
+  the number by hand and two restocks cannot overwrite each other.
 - **The app never sends a total.** Line prices for catalog products are read back
   from the database by the server, so a stale price in the UI cannot become the
   price of record.
@@ -136,7 +138,7 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api/v1   # physi
 ## Tests
 
 ```bash
-cd server && npm test     # 302 tests
+cd server && npm test     # 308 tests
 cd app    && flutter test # 228 tests
 cd app    && flutter analyze
 ```
@@ -150,7 +152,8 @@ cd app    && flutter analyze
 | `server/tests/transactions.test.js` | Phases 5–7: totals, snapshots, status rules, cross-tenant |
 | `server/tests/status_history.test.js` | Phase 8: trail on create, diffed updates, notes, chronology |
 | `server/tests/dashboard.test.js` | Phases 11-12: date filters, aggregates, catalog counts, isolation |
-| `server/tests/low_stock_notifications.test.js` | low-stock alert lifecycle, out-of-stock severity, dashboard summary, staff visibility |
+| `server/tests/analytics.test.js` | owner business analysis: money, trend, products, customers, stock, delivery, owner-only access |
+| `server/tests/low_stock_notifications.test.js` | low-stock alert lifecycle, out-of-stock severity, additive restock, read-all importance, dashboard summary, staff visibility |
 | `server/tests/integrations.test.js` | Phase 14: boundaries exist, are inert, attempt no network call |
 | `server/tests/logistics.test.js`, `logistics_operations.test.js` | spec v3: coverage/distance matching, fleet assignment + restore, lifecycle, quotes, OTP, notifications, 403/404/422 contract |
 | `server/tests/seed.test.js` | Phase 17: scenario set, logistics network, server-consistent totals, idempotent, prod guard |

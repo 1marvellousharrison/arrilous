@@ -16,6 +16,10 @@ class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
     required this.logistics,
     this.appNotifications,
+    this.onOpenProduct,
+    this.onOpenTransaction,
+    this.onOpenImport,
+    this.onOpenDeliveryRequest,
     super.key,
   });
 
@@ -25,6 +29,13 @@ class NotificationsScreen extends StatefulWidget {
   /// delivery partner view) can keep using the page unchanged.
   final AppNotificationsRepository? appNotifications;
 
+  /// Where a tapped alert goes. The shell owns navigation, so this page stays a
+  /// list and each alert can point at the screen that raised it.
+  final void Function(String productId)? onOpenProduct;
+  final void Function(String transactionId)? onOpenTransaction;
+  final void Function(String importId)? onOpenImport;
+  final void Function(String requestId)? onOpenDeliveryRequest;
+
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
@@ -33,8 +44,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    widget.logistics.loadNotifications();
-    widget.appNotifications?.load();
+    // Opening this page is reading the inbox: load it, then clear everything
+    // routine in one go. Stock warnings and errors stay unread on purpose.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await widget.logistics.loadNotifications();
+      await widget.appNotifications?.load();
+      if (!mounted) return;
+      await widget.appNotifications?.markAllRead();
+      if (!mounted) return;
+      await widget.logistics.markAllNotificationsRead();
+    });
   }
 
   @override
@@ -52,7 +72,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (app != null && app.notifications.any((n) => n.isUnread))
             TextButton(
               onPressed: app.markAllRead,
-              child: const Text('Mark all read'),
+              child: const Text('Clear routine'),
             ),
         ],
       ),
@@ -231,6 +251,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  /// A tap does both jobs: the alert is read, and the screen that raised it
+  /// opens. A low-stock alert deliberately keeps its unread state until the
+  /// shelf itself is fixed, even though the tap still takes the owner to the
+  /// products that need attention.
+  Future<void> _openAlert(
+    AppNotificationsRepository app,
+    AppNotification notification,
+  ) async {
+    if (!notification.isLowStock) {
+      await app.markRead(notification.id);
+    }
+    if (!mounted) return;
+
+    final productId = notification.productId;
+    final transactionId = notification.transactionId;
+    final importId = notification.orderImportId;
+    if (notification.isLowStock && productId != null) {
+      widget.onOpenProduct?.call(productId);
+    } else if (importId != null) {
+      widget.onOpenImport?.call(importId);
+    } else if (transactionId != null) {
+      widget.onOpenTransaction?.call(transactionId);
+    }
+  }
+
   Widget _appAlertCard(AppNotificationsRepository app, AppNotification notification) {
     final theme = Theme.of(context);
     final unread = notification.isUnread;
@@ -238,7 +283,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSpacing.md),
-        onTap: unread ? () => app.markRead(notification.id) : null,
+        onTap: () => _openAlert(app, notification),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -276,26 +321,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  Future<void> _openDelivery(
+    LogisticsRepository logistics,
+    Map<String, dynamic> notification,
+  ) async {
+    if (notification['readAt'] == null) {
+      await logistics.markNotificationRead(notification['id'] as String);
+    }
+    if (!mounted) return;
+    final requestId = notification['deliveryRequestId'] as String?;
+    if (requestId == null) return;
+    if (widget.onOpenDeliveryRequest != null) {
+      widget.onOpenDeliveryRequest!(requestId);
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DeliveryRequestDetailScreen(
+          logistics: logistics,
+          requestId: requestId,
+          role: 'business',
+        ),
+      ),
+    );
+  }
+
   Widget _notificationCard(LogisticsRepository logistics, Map<String, dynamic> notification) {    final theme = Theme.of(context);
     final unread = notification['readAt'] == null;
-    final requestId = notification['deliveryRequestId'] as String?;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSpacing.md),
-        onTap: unread
-            ? () => logistics.markNotificationRead(notification['id'] as String)
-            : requestId != null
-                ? () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => DeliveryRequestDetailScreen(
-                          logistics: logistics,
-                          requestId: requestId,
-                          role: 'business',
-                        ),
-                      ),
-                    )
-                : null,
+        onTap: () => _openDelivery(logistics, notification),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

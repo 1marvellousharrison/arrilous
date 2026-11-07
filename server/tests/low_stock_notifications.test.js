@@ -135,6 +135,62 @@ describe('low-stock alerts', () => {
     assert.deepEqual(summary.body.catalog, { activeProducts: 2, customers: 0 });
   });
 
+  test('restocking adds to the existing count instead of replacing it', async () => {
+    const owner = await createBusinessOwner('Add Stock Store');
+    const product = await addProduct(owner, { name: 'Garri', stock_quantity: 2 });
+    await api('GET', '/notifications', { token: owner.token });
+
+    const restocked = await api('POST', `/products/${product.id}/restock`, {
+      token: owner.token,
+      body: { quantity: 10 },
+    });
+    assert.equal(restocked.status, 200, JSON.stringify(restocked.body));
+    assert.equal(restocked.body.product.stockQuantity, 12);
+
+    const second = await api('POST', `/products/${product.id}/restock`, {
+      token: owner.token,
+      body: { quantity: 3 },
+    });
+    assert.equal(second.body.product.stockQuantity, 15);
+
+    const inbox = await api('GET', '/notifications', { token: owner.token });
+    assert.equal(inbox.body.counts.lowStock, 0);
+  });
+
+  test('restock rejects zero and negatives', async () => {
+    const owner = await createBusinessOwner('Bad Restock Store');
+    const product = await addProduct(owner, { name: 'Salt', stock_quantity: 1 });
+
+    for (const quantity of [0, -4]) {
+      const res = await api('POST', `/products/${product.id}/restock`, {
+        token: owner.token,
+        body: { quantity },
+      });
+      assert.equal(res.status, 422, JSON.stringify(res.body));
+    }
+  });
+
+  test('opening the inbox clears routine alerts but keeps stock warnings', async () => {
+    const owner = await createBusinessOwner('Inbox Read Store');
+    await addProduct(owner, { name: 'Beans', stock_quantity: 1 });
+
+    const before = await api('GET', '/notifications', { token: owner.token });
+    const alert = before.body.notifications.find((n) => n.type === 'low_stock');
+    assert.equal(alert.readAt, null);
+
+    await api('POST', '/notifications/read-all', { token: owner.token });
+    const after = await api('GET', '/notifications', { token: owner.token });
+    const kept = after.body.notifications.find((n) => n.id === alert.id);
+    assert.equal(kept.readAt, null, 'a low-stock alert is not cleared by opening the page');
+
+    await api('POST', '/notifications/read-all', {
+      token: owner.token,
+      body: { include_important: true },
+    });
+    const cleared = await api('GET', '/notifications', { token: owner.token });
+    assert.ok(cleared.body.notifications.find((n) => n.id === alert.id).readAt);
+  });
+
   test('staff see the same business-wide stock warning', async () => {
     const owner = await createBusinessOwner('Team Shelf');
     const token = await staffSession(owner);

@@ -190,6 +190,14 @@ class LogisticsRepository extends ChangeNotifier {
     await loadNotifications();
   }
 
+  /// Opening the notification page is the act of reading the delivery stream, so
+  /// all of it can be cleared at once. Stock warnings are a separate stream and
+  /// keep their own rules.
+  Future<void> markAllNotificationsRead() async {
+    await _api.post('/logistics/notifications/read-all', token: _token);
+    await loadNotifications();
+  }
+
   Future<void> requestDelivery({
     required String transactionId,
     String? organizationId,

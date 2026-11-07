@@ -253,6 +253,17 @@ export const productUpdateSchema = productCreateSchema
     message: 'Send at least one field to update.',
   });
 
+// A restock is an addition, not a replacement: the client sends how many units
+// arrived, and the server adds them to whatever is already on the shelf. That
+// keeps two people restocking at once from overwriting each other's count.
+export const productRestockSchema = z.object({
+  quantity: z
+    .number({ required_error: 'How many items did you add?' })
+    .int('Add a whole number of items.')
+    .min(1, 'Add at least one item.')
+    .max(1_000_000, 'That is more stock than this app tracks.'),
+});
+
 export const productListQuerySchema = z.object({
   search: z.string().trim().max(160).optional(),
   category: z.string().trim().max(80).optional(),

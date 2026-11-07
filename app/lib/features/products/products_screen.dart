@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/app_notifications_repository.dart';
@@ -22,6 +23,7 @@ class ProductsScreen extends StatefulWidget {
     super.key,
     this.readOnly = false,
     this.lowStockProducts = const [],
+    this.initialLowStockOnly = false,
   });
 
   final CatalogRepository catalog;
@@ -36,6 +38,11 @@ class ProductsScreen extends StatefulWidget {
   /// archive, and the detail opens for viewing only.
   final bool readOnly;
 
+  /// A notification that points at the shelf opens the list already filtered to
+  /// the products that need attention, instead of dropping the owner at the top
+  /// of a long catalog.
+  final bool initialLowStockOnly;
+
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
 }
@@ -43,7 +50,7 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   final _searchController = TextEditingController();
   Timer? _debounce;
-  bool _lowStockOnly = false;
+  late bool _lowStockOnly = widget.initialLowStockOnly;
 
   @override
   void initState() {
@@ -242,6 +249,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             product: product,
             readOnly: widget.readOnly,
             onTap: () => _openForm(context, product),
+            onRestock: () => _restock(context, product),
             onArchive: () => _toggleArchive(context, product),
           );
         },
@@ -269,8 +277,83 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
+  /// Restocking is an addition, not an edit: the owner types how many arrived
+  /// and the server adds it to the shelf. That avoids remembering or retyping
+  /// the old count, and makes the common case a two-field action.
+  Future<void> _restock(BuildContext context, Product product) async {
+    final controller = TextEditingController(text: '1');
+    final quantity = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Add stock to ${product.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Currently ${product.stockQuantity} in stock. Enter how many you are adding now.',
+              style: Theme.of(dialogContext).textTheme.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Items to add',
+                hintText: '10',
+              ),
+              onSubmitted: (value) {
+                final parsed = int.tryParse(value.trim());
+                if (parsed != null && parsed > 0) Navigator.pop(dialogContext, parsed);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              if (parsed == null || parsed <= 0) return;
+              Navigator.pop(dialogContext, parsed);
+            },
+            child: const Text('Add stock'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (quantity == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await widget.catalog.restock(product.id, quantity);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Added $quantity. ${updated.name} now has ${updated.stockQuantity} in stock.',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } on ApiException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } on NetworkException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
   Future<void> _toggleArchive(BuildContext context, Product product) async {
     final messenger = ScaffoldMessenger.of(context);
+    // A previous undo bar must not sit on top of this one. The action snackbar
+    // is explicitly timed and closable: an undo that never leaves is worse than
+    // no undo at all.
+    messenger.hideCurrentSnackBar();
 
     try {
       await widget.catalog.setArchived(product.id, product.active);
@@ -281,10 +364,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 ? '"${product.name}" archived.'
                 : '"${product.name}" restored.',
           ),
+          duration: const Duration(seconds: 5),
+          showCloseIcon: true,
           action: product.active
               ? SnackBarAction(
                   label: 'Undo',
-                  onPressed: () => widget.catalog.setArchived(product.id, false),
+                  onPressed: () async {
+                    messenger.hideCurrentSnackBar();
+                    await widget.catalog.setArchived(product.id, false);
+                  },
                 )
               : null,
         ),
@@ -551,12 +639,14 @@ class _ProductTile extends StatelessWidget {
   const _ProductTile({
     required this.product,
     required this.onTap,
+    required this.onRestock,
     required this.onArchive,
     this.readOnly = false,
   });
 
   final Product product;
   final VoidCallback onTap;
+  final VoidCallback onRestock;
   final VoidCallback onArchive;
   final bool readOnly;
 
@@ -646,6 +736,12 @@ class _ProductTile extends StatelessWidget {
                 ],
               ),
             ),
+            if (!readOnly && product.active)
+              IconButton(
+                tooltip: 'Add stock',
+                onPressed: onRestock,
+                icon: const Icon(Icons.add_box_outlined, size: 20),
+              ),
             if (!readOnly)
               IconButton(
                 tooltip: product.active ? 'Archive' : 'Restore',

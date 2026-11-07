@@ -245,12 +245,20 @@ otherwise). One location per business.
 | `POST` | `/products` | 201; 409 `sku_taken` on a duplicate SKU |
 | `GET` | `/products/:id` | |
 | `PATCH` | `/products/:id` | partial |
+| `POST` | `/products/:id/restock` | body `{ "quantity": 12 }` — **adds** units to the current stock |
 | `POST` | `/products/:id/archive` | hides it, keeps transaction history |
 | `POST` | `/products/:id/restore` | |
 | `DELETE` | `/products/:id` | **400** if used in any transaction — archive instead |
 
 Archived products are hidden unless `include_archived=true`. SKUs are unique per
 business, not globally.
+
+`/restock` takes the number of units that arrived, not a new total, and runs
+`stock_quantity = stock_quantity + ?` in one statement. Two people restocking at
+the same time therefore both land instead of one overwriting the other, and the
+owner never has to remember the previous count. `quantity` must be a whole
+number of at least 1 (422 otherwise). A successful restock re-syncs the
+low-stock alert, so the warning disappears as soon as the shelf is healthy.
 
 ### Phase 4 — customers
 
@@ -439,6 +447,45 @@ Two decisions worth knowing before reading a number:
   }
 ```
 
+### Business analysis
+
+| Method | Route | Notes |
+|---|---|---|
+| `GET` | `/analytics/overview` | `?days=7\|30\|90&tz_offset_minutes=60`; **owner only** (staff get `403`) |
+
+One shaped report covering the whole business for the owner's chosen window.
+The client draws the report; the server owns every aggregate, so no figure is a
+sum of a paginated list.
+
+```jsonc
+{
+  "range":  { "days": 30, "start": "…", "end": "…", "tzOffsetMinutes": 60 },
+  "totals": { "revenueKobo": 4500000, "orders": 12, "averageOrderKobo": 375000,
+              "collectedKobo": 3000000, "outstandingKobo": 1500000 },
+  "previous": { /* same shape, the window immediately before this one */ },
+  "daily":    [ { "date": "2026-02-01", "revenueKobo": 120000, "orders": 2 } ],
+  "weekdays": [ { "weekday": 0, "label": "Sun", "revenueKobo": 0, "orders": 0 } ],
+  "hours":    [ { "hour": 0, "revenueKobo": 0, "orders": 0 } ],
+  "peakHour": { "hour": 14, "revenueKobo": 900000, "orders": 3 },
+  "topProducts": [ { "name": "Blue Bag", "quantity": 4, "revenueKobo": 6000000 } ],
+  "paymentMix":  [ { "status": "paid", "count": 8, "amountKobo": 3000000 } ],
+  "orderMix":    [ { "status": "pending", "count": 3 } ],
+  "deliveryMix": [ { "status": "delivered", "count": 6 } ],
+  "customers": { "buyers": 5, "newCustomers": 2, "returning": 3,
+                 "walkInOrders": 1, "top": [ { "name": "Ada", "orders": 4, "spentKobo": 900000 } ] },
+  "inventory": { "activeProducts": 9, "inventoryValueKobo": 12000000,
+                 "lowStock": 2, "outOfStock": 1,
+                 "products": [ { "name": "Thread", "stockQuantity": 2, "severity": "warning" } ] },
+  "logistics": { "requests": 6, "delivered": 5, "failed": 1, "successRate": 83 },
+  "generatedAt": "…"
+}
+```
+
+Every day in the window appears in `daily`, including quiet days, so the trend
+line is continuous. Cancelled sales are excluded from money and order figures
+(and still counted in `orderMix`). `successRate` is `null` until a delivery has
+finished one way or the other, rather than pretending to be `0%`.
+
 ---
 
 ## Logistics (integrated spec v3)
@@ -529,6 +576,7 @@ Rules the routes enforce rather than trusting the caller:
 | `GET` | `/logistics/notifications` | `{ notifications, unreadCount }` for the signed-in user |            
 | `GET` | `/logistics/organization/earnings` | `{ earningsKobo, history[] }` - completed deliveries and the money they earned | 
 | `GET` | `/logistics/rider/earnings` | `{ earningsKobo, history[] }` - the rider's completed deliveries |
+| `POST` | `/logistics/notifications/read-all` | marks every unread delivery alert for this user read (`200`) |
 | `PATCH` | `/logistics/notifications/:id/read` | marks one read (`204`) |
 
 Delivery events (requested, quoted, assigned, status changes) write a row here
@@ -542,9 +590,36 @@ needs details) alongside delivery activity in the Profile tab.
 
 | Method | Route | Notes |
 |---|---|---|
-| `GET` | `/notifications` | `{ notifications, unreadCount }` for the signed-in business |
+| `GET` | `/notifications` | `{ notifications, unreadCount, counts, lowStock }` for the signed-in business |
 | `PATCH` | `/notifications/:id/read` | marks one read (`200`) |
-| `POST` | `/notifications/read-all` | marks every unread alert read (`200`) |
+| `POST` | `/notifications/read-all` | clears **routine** alerts; low-stock and `error` alerts stay unread (`200`) |
+
+`GET /notifications` also self-heals the shelf: it raises one open alert per low
+product and resolves an alert whose product has been restocked, archived or
+deleted. The response looks like:
+
+```jsonc
+{
+  "notifications": [ /* newest first, at most 200 */ ],
+  "unreadCount": 4,
+  "counts": { "unread": 4, "lowStock": 2, "outOfStock": 1, "errors": 1, "warnings": 3 },
+  "lowStock": {
+    "count": 2,
+    "outOfStock": 1,
+    "products": [ { "id": "…", "name": "Thread", "stockQuantity": 0, "severity": "error" } ]
+  }
+}
+```
+
+`counts.lowStock` is counted from the shelf itself, not from unread rows, so the
+warning survives a cleared bell and disappears only when the product is healthy.
+
+Opening the inbox counts as reading it, so `read-all` clears routine alerts
+without a tap per row. Two kinds deliberately survive: `low_stock` alerts (they
+disappear only when the product itself is healthy) and anything with
+`severity = 'error'`. An explicit `{ "include_important": true }` clears
+everything. Because a still-low product re-raises its alert on the next read,
+attending to the stock is the only way to make the warning stay away.
 
 ### AI / screenshot import
 
