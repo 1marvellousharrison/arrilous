@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/state/app_notifications_repository.dart';
 import '../../core/state/catalog_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
@@ -20,10 +21,16 @@ class ProductsScreen extends StatefulWidget {
     required this.businessName,
     super.key,
     this.readOnly = false,
+    this.lowStockProducts = const [],
   });
 
   final CatalogRepository catalog;
   final String businessName;
+
+  /// The server's low-stock list, so the warning still names every product even
+  /// when the catalog on screen is filtered. Falls back to the loaded rows when
+  /// the caller has not fetched the summary.
+  final List<LowStockProduct> lowStockProducts;
 
   /// A staff member may read the catalog but never change it: no add button, no
   /// archive, and the detail opens for viewing only.
@@ -36,6 +43,7 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+  bool _lowStockOnly = false;
 
   @override
   void initState() {
@@ -60,6 +68,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       listenable: widget.catalog,
       builder: (context, _) {
         final catalog = widget.catalog;
+        final warning = _warningProducts(catalog);
 
         return Scaffold(
           appBar: AppBar(
@@ -114,11 +123,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ),
                 ),
               ),
-              if (catalog.categories.isNotEmpty)
+              if (warning.isNotEmpty)
+                _LowStockBanner(
+                  products: warning,
+                  onTap: () => setState(() => _lowStockOnly = true),
+                ),
+              if (catalog.categories.isNotEmpty || warning.isNotEmpty)
                 _CategoryBar(
                   categories: catalog.categories,
                   selected: catalog.category,
                   onSelect: catalog.setCategory,
+                  lowStockCount: warning.length,
+                  lowStockOnly: _lowStockOnly,
+                  onToggleLowStock: () =>
+                      setState(() => _lowStockOnly = !_lowStockOnly),
                 ),
               Expanded(child: _body(context)),
             ],
@@ -128,8 +146,41 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
+  List<LowStockProduct> _warningProducts(CatalogRepository catalog) {
+    // While the catalog is unfiltered it is the freshest view: saving a product
+    // reloads it, so a restocked item disappears from the warning immediately.
+    final unfiltered = catalog.loaded &&
+        catalog.search.isEmpty &&
+        catalog.category == null &&
+        !catalog.includeArchived;
+    if (unfiltered) {
+      return catalog.lowStockProducts
+          .map((product) => LowStockProduct(
+                id: product.id,
+                name: product.name,
+                stockQuantity: product.stockQuantity,
+                severity: product.isOutOfStock ? 'error' : 'warning',
+              ))
+          .toList(growable: false);
+    }
+    if (widget.lowStockProducts.isNotEmpty) return widget.lowStockProducts;
+    return catalog.lowStockProducts
+        .map((product) => LowStockProduct(
+              id: product.id,
+              name: product.name,
+              stockQuantity: product.stockQuantity,
+              severity: product.isOutOfStock ? 'error' : 'warning',
+            ))
+        .toList(growable: false);
+  }
+
   Widget _body(BuildContext context) {
     final catalog = widget.catalog;
+    final products = _lowStockOnly
+        ? catalog.activeProducts
+            .where((product) => product.isLowStock || product.isOutOfStock)
+            .toList(growable: false)
+        : catalog.products;
 
     if (catalog.loading && !catalog.loaded) {
       return const Center(child: CircularProgressIndicator());
@@ -142,7 +193,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ],
       );
     }
-    if (catalog.products.isEmpty) {
+    if (products.isEmpty) {
+      if (_lowStockOnly) {
+        return EmptyState(
+          icon: Icons.inventory_2_outlined,
+          title: 'No low-stock products',
+          message: 'Every product on the shelf is above the warning line.',
+          action: OutlinedButton(
+            onPressed: () => setState(() => _lowStockOnly = false),
+            child: const Text('Show all products'),
+          ),
+        );
+      }
       return EmptyState(
         icon: Icons.inventory_2_outlined,
         title: catalog.search.isEmpty
@@ -172,10 +234,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
           AppSpacing.lg,
           96,
         ),
-        itemCount: catalog.products.length,
+        itemCount: products.length,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
         itemBuilder: (context, index) {
-          final product = catalog.products[index];
+          final product = products[index];
           return _ProductTile(
             product: product,
             readOnly: widget.readOnly,
@@ -235,16 +297,128 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 }
 
+/// The catalog's own warning: a red card that names the products before the
+/// owner scrolls past them. Tapping it filters the list to just those rows.
+class _LowStockBanner extends StatelessWidget {
+  const _LowStockBanner({required this.products, required this.onTap});
+
+  final List<LowStockProduct> products;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final out = products.where((product) => product.isOutOfStock).length;
+    final names = products
+        .take(4)
+        .map((product) =>
+            '${product.name} (${product.isOutOfStock ? 'out' : '${product.stockQuantity} left'})')
+        .join(' • ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      child: AppCard(
+        color: AppColors.danger.withValues(alpha: 0.08),
+        borderColor: AppColors.danger.withValues(alpha: 0.50),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        onTap: onTap,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.danger,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    out > 0 ? 'STOCK ALERT' : 'LOW STOCK',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    products.length == 1
+                        ? '1 product needs restocking'
+                        : '${products.length} products need restocking',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (out > 0)
+                    Text(
+                      '$out already out of stock',
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  if (names.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      names,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.danger,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Tap to show only these',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CategoryBar extends StatelessWidget {
   const _CategoryBar({
     required this.categories,
     required this.selected,
     required this.onSelect,
+    required this.lowStockCount,
+    required this.lowStockOnly,
+    required this.onToggleLowStock,
   });
 
   final List<String> categories;
   final String? selected;
   final ValueChanged<String?> onSelect;
+  final int lowStockCount;
+  final bool lowStockOnly;
+  final VoidCallback onToggleLowStock;
 
   @override
   Widget build(BuildContext context) {
@@ -254,18 +428,82 @@ class _CategoryBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         children: [
+          if (lowStockCount > 0)
+            _AlertChip(
+              label: 'Low stock ($lowStockCount)',
+              selected: lowStockOnly,
+              onTap: onToggleLowStock,
+            ),
           _Chip(
             label: 'All',
-            selected: selected == null,
-            onTap: () => onSelect(null),
+            selected: selected == null && !lowStockOnly,
+            onTap: () {
+              if (lowStockOnly) onToggleLowStock();
+              onSelect(null);
+            },
           ),
           for (final category in categories)
             _Chip(
               label: category,
-              selected: selected == category,
-              onTap: () => onSelect(selected == category ? null : category),
+              selected: selected == category && !lowStockOnly,
+              onTap: () {
+                if (lowStockOnly) onToggleLowStock();
+                onSelect(selected == category ? null : category);
+              },
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _AlertChip extends StatelessWidget {
+  const _AlertChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.danger
+                : AppColors.danger.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: AppColors.danger),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 14,
+                color: selected ? Colors.white : AppColors.danger,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : AppColors.danger,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -325,24 +563,34 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final warning = product.active &&
+        (product.isLowStock || product.isOutOfStock);
 
     return Opacity(
       // An archived product stays visible in the list but is visibly out of play.
       opacity: product.active ? 1 : 0.55,
       child: AppCard(
         onTap: onTap,
+        color: warning ? AppColors.danger.withValues(alpha: 0.05) : null,
+        borderColor: warning
+            ? AppColors.danger.withValues(alpha: 0.40)
+            : null,
         child: Row(
           children: [
             Container(
               width: 46,
               height: 46,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                color: warning
+                    ? AppColors.danger.withValues(alpha: 0.12)
+                    : theme.colorScheme.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(AppRadius.field),
               ),
               child: Icon(
-                Icons.inventory_2_outlined,
-                color: theme.colorScheme.primary,
+                warning
+                    ? Icons.warning_amber_rounded
+                    : Icons.inventory_2_outlined,
+                color: warning ? AppColors.danger : theme.colorScheme.primary,
                 size: 22,
               ),
             ),
@@ -428,11 +676,33 @@ class _StockLabel extends StatelessWidget {
       _ => ('${product.stockQuantity} in stock', theme.colorScheme.onSurface),
     };
 
-    return Text(
-      label,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: color,
-        fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (product.isOutOfStock || product.isLowStock) ...[
+            Icon(
+              product.isOutOfStock
+                  ? Icons.error_outline
+                  : Icons.warning_amber_rounded,
+              size: 13,
+              color: color,
+            ),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

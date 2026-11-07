@@ -12,16 +12,32 @@ class AppCard extends StatelessWidget {
     super.key,
     this.padding = const EdgeInsets.all(AppSpacing.lg),
     this.onTap,
+    this.color,
+    this.borderColor,
+    this.borderWidth = 1.2,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
 
+  /// Optional surface and border, used by warnings that must read as warnings
+  /// even before the text is read.
+  final Color? color;
+  final Color? borderColor;
+  final double borderWidth;
+
   @override
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: color,
+      shape: borderColor == null
+          ? null
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              side: BorderSide(color: borderColor!, width: borderWidth),
+            ),
       child: InkWell(
         onTap: onTap,
         child: Padding(padding: padding, child: child),

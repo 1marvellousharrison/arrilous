@@ -335,4 +335,35 @@ void main() {
     expect(find.text('No sales yet.'), findsOneWidget);
     expect(find.text('Record your first sale'), findsOneWidget);
   });
+
+  testWidgets('a low shelf is announced on the staff home and opens the catalog', (tester) async {
+    final summary = summaryBody()
+      ..['lowStock'] = {
+        'count': 2,
+        'outOfStock': 1,
+        'products': [
+          {'id': 'p1', 'name': 'Milk', 'stockQuantity': 0, 'severity': 'error'},
+          {'id': 'p2', 'name': 'Sugar', 'stockQuantity': 4, 'severity': 'warning'},
+        ],
+      };
+
+    var opened = false;
+    final (dashboard, business, auth) = await signedInStaff(clientWith(summary));
+    await pumpDashboard(
+      tester,
+      dashboard,
+      business,
+      auth,
+      onOpenProducts: () => opened = true,
+    );
+
+    expect(find.text('STOCK ALERT'), findsOneWidget);
+    expect(find.text('2 products need restocking'), findsOneWidget);
+    expect(find.text('1 already out of stock'), findsOneWidget);
+    expect(find.text('Milk, Sugar'), findsOneWidget);
+
+    await tester.tap(find.text('Check products'));
+    await tester.pumpAndSettle();
+    expect(opened, isTrue);
+  });
 }

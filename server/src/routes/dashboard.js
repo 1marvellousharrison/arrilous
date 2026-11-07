@@ -3,6 +3,7 @@ import express from 'express';
 import { queryAll, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusinessOwner, requireBusiness } from '../middleware/business.js';
+import { lowStockSummary } from '../lib/notifications.js';
 import { publicTransaction } from './transactions.js';
 
 export const dashboardRouter = express.Router();
@@ -212,6 +213,11 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
   // something for this business rather than for the whole platform.
   const logistics = await logisticsSummary(businessId);
 
+  // The shelf is checked on every dashboard load, so a low-stock warning is
+  // waiting on the first screen rather than only inside the bell. Both the
+  // owner and a staff member see the same shop-wide stock picture.
+  const lowStock = await lowStockSummary(businessId);
+
   res.json({
     totals: {
       transactionCount: money?.transactionCount ?? 0,
@@ -233,6 +239,7 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
       customers: catalog?.customers ?? 0,
     },
     logistics,
+    lowStock,
     recent,
     ...(staff
       ? {

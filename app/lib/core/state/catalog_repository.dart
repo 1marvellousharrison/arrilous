@@ -75,6 +75,15 @@ class CatalogRepository extends ChangeNotifier {
   List<Product> get activeProducts =>
       _products.where((product) => product.active).toList();
 
+  /// The shelf warning, computed from what is loaded. The dashboard uses the
+  /// server summary instead; this is for the catalog screen, which already has
+  /// the rows in hand.
+  List<Product> get lowStockProducts => activeProducts
+      .where((product) => product.isLowStock || product.isOutOfStock)
+      .toList();
+
+  int get lowStockCount => lowStockProducts.length;
+
   /// Re-reads the catalog from the server. Search and category are applied by the
   /// API so that paging stays correct as the catalog grows.
   Future<void> load() async {

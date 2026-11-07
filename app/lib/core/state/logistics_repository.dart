@@ -40,7 +40,15 @@ class LogisticsRepository extends ChangeNotifier {
     notifyListeners();
     try {
       final role = _auth.session?.user.role;
-      if (role != 'business') {
+      if (role == 'business' || role == 'staff') {
+        // A staff member works the same delivery desk as the owner, so they
+        // read the business request list rather than a partner/rider profile.
+        organization = null;
+        rider = null;
+        organizationDetails = null;
+        riderDetails = null;
+        myRiders = const [];
+      } else {
         final profile = await _api.get(
           role == 'rider' ? '/logistics/rider' : '/logistics/organization',
           token: _token,
@@ -54,12 +62,6 @@ class LogisticsRepository extends ChangeNotifier {
           myRiders = (roster['riders'] as List<dynamic>? ?? const [])
               .whereType<Map<String, dynamic>>().toList();
         }
-      } else {
-        organization = null;
-        rider = null;
-        organizationDetails = null;
-        riderDetails = null;
-        myRiders = const [];
       }
       final queued = await _api.get('/logistics/requests', token: _token) as Map<String, dynamic>;
       requests = (queued['deliveryRequests'] as List<dynamic>? ?? const [])
@@ -79,12 +81,16 @@ class LogisticsRepository extends ChangeNotifier {
   /// recompute money from the request list.
   Future<void> loadEarnings() async {
     if (_auth.session == null) return;
-    final path = _auth.session!.user.role == 'rider'
+    final role = _auth.session!.user.role;
+    // The owner and staff use the business delivery desk, not a provider
+    // ledger; the earnings endpoint belongs to organizations and riders.
+    if (role == 'business' || role == 'staff') return;
+    final path = role == 'rider'
         ? '/logistics/rider/earnings'
         : '/logistics/organization/earnings';
     try {
       final data = await _api.get(path, token: _token) as Map<String, dynamic>;
-      if (_auth.session!.user.role == 'rider') {
+      if (role == 'rider') {
         riderEarnings = data;
       } else {
         organizationEarnings = data;

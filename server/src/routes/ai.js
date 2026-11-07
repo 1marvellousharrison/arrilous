@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { recordCreation } from '../lib/history.js';
+import { addAppNotification } from '../lib/notifications.js';
 import { config } from '../config.js';
 
 export const aiRouter = express.Router();
@@ -108,8 +109,35 @@ aiRouter.post('/import', async (req, res) => {
       businessId: req.business.id,
       userId: req.auth.userId,
       image,
-    }).catch((error) => {
+    }).catch(async (error) => {
       console.error('Screenshot import failed:', error?.message || error);
+      const failedAt = now();
+      try {
+        await run(
+          "UPDATE order_imports SET status = 'failed', updated_at = ? WHERE id = ? AND status <> 'completed'",
+          failedAt,
+          importId
+        );
+        // An error the user can act on belongs in the bell, not only in the
+        // server log. Without this the import sat at "processing" until the
+        // client gave up, with nothing explaining why.
+        await addAppNotification({
+          businessId: req.business.id,
+          userId: req.auth.userId,
+          importId,
+          type: 'import_failed',
+          title: 'Screenshot import failed',
+          message:
+            'We could not read that screenshot. Try another photo or record the sale manually.',
+          severity: 'error',
+          createdAt: failedAt,
+        });
+      } catch (notifyError) {
+        console.error(
+          'Could not record the import failure:',
+          notifyError?.message || notifyError
+        );
+      }
     });
   });
 });

@@ -30,6 +30,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onAddProduct,
     required this.onAddCustomer,
     this.onGoToAiChat,
+    this.onOpenProducts,
     super.key,
     this.canAddProduct = true,
   });
@@ -48,6 +49,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onAddProduct;
   final VoidCallback onAddCustomer;
   final VoidCallback? onGoToAiChat;
+  final VoidCallback? onOpenProducts;
 
   /// A staff member can add customers but not products, so the quick action is
   /// hidden rather than offered and refused.
@@ -88,6 +90,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               AppSpacing.xxl,
             ),
             children: [
+              if (summary != null && summary.lowStock.hasIssues) ...[
+                _lowStockBanner(summary.lowStock),
+                const SizedBox(height: AppSpacing.lg),
+              ],
               _moneyBlock(summary),
               const SizedBox(height: AppSpacing.lg),
               _stateCounts(summary),
@@ -129,6 +135,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .titleSmall
             ?.copyWith(fontWeight: FontWeight.w700),
       );
+
+  /// The shelf warning that sits above the money. A low-stock product is a sale
+  /// about to be lost, so it gets the first card on the page and names what to
+  /// check rather than only counting it.
+  Widget _lowStockBanner(LowStockSummary lowStock) {
+    final theme = Theme.of(context);
+    final out = lowStock.outOfStock;
+    final names = lowStock.productNames;
+    return AppCard(
+      color: AppColors.danger.withValues(alpha: 0.08),
+      borderColor: AppColors.danger.withValues(alpha: 0.50),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      onTap: widget.onOpenProducts,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.danger.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.danger,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  out > 0 ? 'STOCK ALERT' : 'LOW STOCK',
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  lowStock.headline,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (out > 0)
+                  Text(
+                    '$out already out of stock',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                if (names.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    names,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: widget.onOpenProducts,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      foregroundColor: AppColors.danger,
+                    ),
+                    child: const Text('Check products'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Spec 41 — delivery workload and the nearby supply that could take it.
   Widget _logisticsBlock(LogisticsSummary? logistics) {
@@ -544,15 +640,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       category: business?.businessCategory,
       locationLine: business?.location?.oneLine ?? 'Location not set yet',
       catalogLine: '$products products • $customers customers',
+      lowStock: widget.dashboard.summary?.lowStock ?? LowStockSummary.empty,
     );
   }
 }
 
-/// One entry in the showcase reel. A slide is either the shop's name, its logo,
-/// or a single product.
-enum _ShowcaseKind { name, logo, product }
+/// One entry in the showcase reel. A slide is either the low-stock warning, the
+/// shop's name, its logo, or a single product.
+enum _ShowcaseKind { lowStock, name, logo, product }
 
 class _ShowcaseSlide {
+  const _ShowcaseSlide.lowStock()
+      : kind = _ShowcaseKind.lowStock,
+        product = null;
+
   const _ShowcaseSlide.name()
       : kind = _ShowcaseKind.name,
         product = null;
@@ -567,12 +668,18 @@ class _ShowcaseSlide {
   final Product? product;
 }
 
-/// Lays out the reel: it opens on the shop's name, then walks every active
-/// product — one per slide — dropping the logo in after every couple of
-/// products so the products never run in a row. When the catalog is empty the
-/// reel is just the name and the logo.
-List<_ShowcaseSlide> _buildDeck(List<Product> products) {
-  final deck = <_ShowcaseSlide>[const _ShowcaseSlide.name()];
+/// Lays out the reel: a low-stock warning opens it when the shelf needs
+/// attention, then the shop's name, then every active product — one per slide —
+/// dropping the logo in after every couple of products so the products never run
+/// in a row. When the catalog is empty the reel is just the name and the logo.
+List<_ShowcaseSlide> _buildDeck(
+  List<Product> products,
+  LowStockSummary lowStock,
+) {
+  final deck = <_ShowcaseSlide>[
+    if (lowStock.hasIssues) const _ShowcaseSlide.lowStock(),
+    const _ShowcaseSlide.name(),
+  ];
   var sinceLogo = 0;
   for (final product in products) {
     deck.add(_ShowcaseSlide.product(product));
@@ -600,6 +707,7 @@ class _BusinessShowcase extends StatefulWidget {
     required this.category,
     required this.locationLine,
     required this.catalogLine,
+    required this.lowStock,
   });
 
   final CatalogRepository catalog;
@@ -608,6 +716,7 @@ class _BusinessShowcase extends StatefulWidget {
   final String? category;
   final String locationLine;
   final String catalogLine;
+  final LowStockSummary lowStock;
 
   @override
   State<_BusinessShowcase> createState() => _BusinessShowcaseState();
@@ -663,7 +772,10 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
           child: AnimatedBuilder(
             animation: widget.catalog,
             builder: (context, _) {
-              final deck = _buildDeck(widget.catalog.activeProducts);
+              final deck = _buildDeck(
+                widget.catalog.activeProducts,
+                widget.lowStock,
+              );
               _deck = deck;
               if (_page >= deck.length) _page = 0;
               return Stack(
@@ -701,6 +813,8 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
 
   Widget _slideFor(_ShowcaseSlide slide) {
     switch (slide.kind) {
+      case _ShowcaseKind.lowStock:
+        return _LowStockSlide(summary: widget.lowStock);
       case _ShowcaseKind.name:
         return _NameSlide(
           name: widget.businessName,
@@ -787,6 +901,117 @@ class _BusinessShowcaseState extends State<_BusinessShowcase> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The reel's opening warning: how many products need restocking, and which
+/// ones. It sits first in the deck so the owner sees it before the shop's own
+/// name, even if they never open the bell.
+class _LowStockSlide extends StatelessWidget {
+  const _LowStockSlide({required this.summary});
+
+  final LowStockSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shown = summary.products.take(3).toList(growable: false);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxl,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.danger,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'LOW STOCK ALERT',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.danger,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            summary.headline,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: AppColors.danger,
+              height: 1.1,
+            ),
+          ),
+          if (summary.outOfStock > 0)
+            Text(
+              '${summary.outOfStock} already out of stock',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.danger,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          const SizedBox(height: AppSpacing.sm),
+          for (final product in shown)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      product.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    product.isOutOfStock
+                        ? 'OUT'
+                        : '${product.stockQuantity} left',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (summary.products.length > shown.length)
+            Text(
+              '+${summary.products.length - shown.length} more',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.danger,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

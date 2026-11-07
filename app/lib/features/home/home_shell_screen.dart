@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_client.dart';
@@ -81,7 +83,15 @@ class HomeShellScreen extends StatefulWidget {
 class _HomeShellScreenState extends State<HomeShellScreen> {
   int _index = 0;
 
+  Timer? _notificationTimer;
+
   bool get _isStaff => widget.user.role == 'staff';
+
+  /// Notifications are refreshed on a slow timer as well as on every visit, so
+  /// a low-stock alert reaches the nav badge without the owner having to pull
+  /// to refresh. The interval is deliberately calm: this is a warning, not a
+  /// ticker.
+  static const _notificationInterval = Duration(seconds: 30);
 
   // Login or refresh is the only moment the incomplete-details prompt appears
   // on its own. Recording a sale asks again regardless of this flag, because
@@ -98,6 +108,23 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     widget.business.load().whenComplete(() {
       if (mounted) _maybePromptForDetails();
     });
+    _refreshNotifications();
+    _notificationTimer = Timer.periodic(
+      _notificationInterval,
+      (_) => _refreshNotifications(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshNotifications() async {
+    if (!mounted) return;
+    await widget.appNotifications.load();
+    await widget.logistics.loadNotifications();
   }
 
   /// Spec — a refresh or a sign-in surfaces the details the logistics side
@@ -185,7 +212,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.business,
+      listenable: Listenable.merge([
+        widget.business,
+        widget.appNotifications,
+        widget.logistics,
+      ]),
       builder: (context, _) {
         final business = widget.business;
 
@@ -264,36 +295,107 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           bottomNavigationBar: NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: _onTab,
-            destinations: const [
-              NavigationDestination(
+            destinations: [
+              const NavigationDestination(
                 icon: Icon(Icons.dashboard_outlined),
                 selectedIcon: Icon(Icons.dashboard),
                 label: 'Home',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.receipt_long_outlined),
                 selectedIcon: Icon(Icons.receipt_long),
                 label: 'Sales',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.auto_awesome_outlined),
                 selectedIcon: Icon(Icons.auto_awesome),
                 label: 'AI / Chats',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.local_shipping_outlined),
                 selectedIcon: Icon(Icons.local_shipping),
                 label: 'Logistics',
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
+                icon: _profileNavIcon(selected: false),
+                selectedIcon: _profileNavIcon(selected: true),
                 label: 'Profile',
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  /// The Profile destination is the app's alert light. A red, larger, rounded
+  /// icon means something on the shelf needs restocking; a small badge means
+  /// there are unread alerts. The stock warning outranks the plain unread count
+  /// because it is the one that costs money if ignored.
+  Widget _profileNavIcon({required bool selected}) {
+    final lowStock = widget.appNotifications.lowStockCount;
+    final unread =
+        widget.appNotifications.unreadCount + widget.logistics.unreadCount;
+    final icon = Icon(selected ? Icons.person : Icons.person_outline);
+
+    if (lowStock > 0) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: AppColors.danger,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.danger.withValues(alpha: 0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Icon(
+              selected ? Icons.person : Icons.person_outline,
+              color: Colors.white,
+              size: 24,
+            ),
+            Positioned(
+              right: -5,
+              top: -5,
+              child: _navBadge(lowStock),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (unread > 0) {
+      return Badge(label: Text('$unread'), child: icon);
+    }
+    return icon;
+  }
+
+  Widget _navBadge(int count) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.danger,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: Colors.white, width: 1.5),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 
@@ -305,10 +407,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     switch (index) {
       case 0:
         widget.dashboard.load();
+        widget.appNotifications.load();
       case 1:
         widget.transactions.load();
       case 3:
         widget.logistics.load();
+        widget.logistics.loadNotifications();
+      case 4:
+        widget.appNotifications.load();
+        widget.logistics.loadNotifications();
     }
   }
 
@@ -339,6 +446,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   onSeeAllTransactions: () => _onTab(1),
                   onAddProduct: _addProduct,
                   onAddCustomer: _addCustomer,
+                  onOpenProducts: _openProducts,
                   onGoToAiChat: () => _onTab(2),
                   canAddProduct: !_isStaff,
                 ),
@@ -476,15 +584,23 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
-  Future<void> _openProducts() => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (_) => ProductsScreen(
-        catalog: widget.catalog,
-        businessName: widget.business.business?.displayName ?? '',
-        readOnly: _isStaff,
+  Future<void> _openProducts() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ProductsScreen(
+          catalog: widget.catalog,
+          businessName: widget.business.business?.displayName ?? '',
+          readOnly: _isStaff,
+          lowStockProducts: widget.appNotifications.lowStockProducts,
+        ),
       ),
-    ),
-  );
+    );
+    // Restocking or archiving on that screen changes the shelf warning, the
+    // badge and the dashboard summary together.
+    if (!mounted) return;
+    await widget.appNotifications.load();
+    if (mounted) widget.dashboard.load();
+  }
 
   Future<void> _openCustomers() => Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
@@ -535,9 +651,15 @@ class _ProfileScreenState extends State<_ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    widget.logistics.loadNotifications();
-    widget.logistics.load();
-    widget.appNotifications.load();
+    // The shell listens to these repositories for the nav badge, so notifying
+    // them during this widget's first build would rebuild an ancestor mid-build.
+    // Defer the refresh one frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.logistics.loadNotifications();
+      widget.logistics.load();
+      widget.appNotifications.load();
+    });
   }
 
   Future<void> _openNotifications() => Navigator.of(context).push<void>(
@@ -573,12 +695,30 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           children: [
             _businessHeader(widget.business.business),
             const SizedBox(height: AppSpacing.lg),
+            if (appNotifications.hasLowStock) ...[
+              _lowStockCard(appNotifications),
+              const SizedBox(height: AppSpacing.lg),
+            ],
             ListTile(
-              leading: const Icon(Icons.notifications_none),
+              leading: Icon(
+                appNotifications.hasLowStock
+                    ? Icons.warning_amber_rounded
+                    : Icons.notifications_none,
+                color: appNotifications.hasLowStock ? AppColors.danger : null,
+              ),
               title: const Text('Notifications'),
               subtitle: Text(
-                unread > 0 ? '$unread unread' : 'Order alerts and delivery activity',
+                _notificationSubtitle(appNotifications, logistics),
+                style: appNotifications.hasLowStock
+                    ? const TextStyle(color: AppColors.danger)
+                    : null,
               ),
+              trailing: unread > 0
+                  ? Badge(
+                      label: Text('$unread'),
+                      child: const Icon(Icons.chevron_right),
+                    )
+                  : const Icon(Icons.chevron_right),
               onTap: _openNotifications,
             ),
             ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
@@ -596,6 +736,107 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// The notification row's second line, naming the warning before the count so
+  /// a low-stock alert cannot hide behind "1 unread".
+  String _notificationSubtitle(
+    AppNotificationsRepository app,
+    LogisticsRepository logistics,
+  ) {
+    final unread = app.unreadCount + logistics.unreadCount;
+    final parts = <String>[
+      if (app.hasLowStock) '${app.lowStockCount} low stock',
+      if (app.errorCount > 0) '${app.errorCount} errors',
+      if (unread > 0) '$unread unread',
+    ];
+    return parts.isEmpty
+        ? 'Order alerts and delivery activity'
+        : parts.join(' • ');
+  }
+
+  /// The shelf warning on the Profile page. It is bigger than a list row and
+  /// names the products, because "3 low stock" alone does not tell the owner
+  /// what to check.
+  Widget _lowStockCard(AppNotificationsRepository app) {
+    final names = app.lowStockProducts
+        .take(4)
+        .map((product) =>
+            '${product.name} (${product.isOutOfStock ? 'out' : '${product.stockQuantity} left'})')
+        .join(' • ');
+    return AppCard(
+      color: AppColors.danger.withValues(alpha: 0.07),
+      borderColor: AppColors.danger.withValues(alpha: 0.45),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      onTap: () => widget.onProducts(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.danger.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.danger,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  app.outOfStockCount > 0
+                      ? 'Stock alert'
+                      : 'Low stock alert',
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  app.lowStockCount == 1
+                      ? '1 product needs restocking'
+                      : '${app.lowStockCount} products need restocking',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                if (names.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    names,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.danger,
+                        ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => widget.onProducts(),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      foregroundColor: AppColors.danger,
+                    ),
+                    child: const Text('Check products'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -43,6 +43,27 @@ async function deliverySale(owner) {
   return sale.body.transaction;
 }
 
+const STAFF_PASSWORD = 'Str0ngPass!23';
+
+async function staffSession(owner, fullName = 'Desk Staff') {
+  const created = await api('POST', '/staff', {
+    token: owner.token,
+    body: { full_name: fullName },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const code = created.body.staff.staffCode;
+  await api('POST', '/staff/claim', { body: { staff_code: code } });
+  const activated = await api('POST', '/staff/activate', {
+    body: { staff_code: code, password: STAFF_PASSWORD },
+  });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+  const login = await api('POST', '/auth/login', {
+    body: { identifier: code, password: STAFF_PASSWORD },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  return login.body.access_token;
+}
+
 test('logistics organizations publish availability, areas, pricing and fleet', async () => {
   const org = await setupOrganization();
   const price = await api('POST', '/logistics/organization/pricing', { token: org.token, body: { destination: 'Warri', price_kobo: 250000 } });
@@ -76,4 +97,65 @@ test('a business matches an active provider then completes its delivery workflow
   assert.equal(confirmed.status, 201, JSON.stringify(confirmed.body));
   const transaction = await api('GET', `/transactions/${sale.id}`, { token: owner.token });
   assert.equal(transaction.body.transaction.deliveryStatus, 'delivered');
+});
+
+test('a staff member works the business delivery desk', async () => {
+  const owner = await createBusinessOwner();
+  const org = await setupOrganization();
+  const sale = await deliverySale(owner);
+  const staffToken = await staffSession(owner);
+
+  const requested = await api('POST', '/logistics/requests', {
+    token: owner.token,
+    body: { transaction_id: sale.id, organization_id: org.organization.id, package_size: 'small' },
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  const requestId = requested.body.deliveryRequest.id;
+
+  // A staff member sees the same business request list and detail as the owner.
+  const list = await api('GET', '/logistics/requests', { token: staffToken });
+  assert.equal(list.status, 200, JSON.stringify(list.body));
+  assert.ok(list.body.deliveryRequests.some((request) => request.id === requestId));
+
+  const detail = await api('GET', `/logistics/requests/${requestId}`, { token: staffToken });
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+
+  // Business-side notifications fan out to the active team, not only the owner.
+  const quoted = await api('PATCH', `/logistics/requests/${requestId}/quote`, {
+    token: org.token,
+    body: { quoted_price_kobo: 260000 },
+  });
+  assert.equal(quoted.status, 200, JSON.stringify(quoted.body));
+  const staffInbox = await api('GET', '/logistics/notifications', { token: staffToken });
+  assert.equal(staffInbox.status, 200, JSON.stringify(staffInbox.body));
+  assert.ok(staffInbox.body.notifications.some((item) => item.kind === 'quote_received'));
+
+  // The staff can accept the quote, read the timeline, and confirm the delivery.
+  const accepted = await api('PATCH', `/logistics/requests/${requestId}/accept-quote`, {
+    token: staffToken,
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  for (const status of ['picked_up', 'in_transit', 'delivered']) {
+    const moved = await api('PATCH', `/logistics/requests/${requestId}/status`, {
+      token: org.token,
+      body: { status },
+    });
+    assert.equal(moved.status, 200, `${status}: ${JSON.stringify(moved.body)}`);
+  }
+  const events = await api('GET', `/logistics/requests/${requestId}/events`, {
+    token: staffToken,
+  });
+  assert.equal(events.status, 200, JSON.stringify(events.body));
+
+  const otp = await api('POST', `/logistics/requests/${requestId}/otp`, {
+    token: staffToken,
+    body: { expires_in_minutes: 10 },
+  });
+  assert.equal(otp.status, 201, JSON.stringify(otp.body));
+
+  const confirmed = await api('POST', `/logistics/requests/${requestId}/confirm`, {
+    token: staffToken,
+    body: { method: 'manual' },
+  });
+  assert.equal(confirmed.status, 201, JSON.stringify(confirmed.body));
 });

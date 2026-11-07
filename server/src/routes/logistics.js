@@ -2,7 +2,11 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { queryAll, queryOne, run, transaction } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireBusiness, findBusinessForUser } from '../middleware/business.js';
+import {
+  requireBusiness,
+  findBusinessForUser,
+  findStaffContextForUser,
+} from '../middleware/business.js';
 import { requireRole } from '../middleware/roles.js';
 import { badRequest, conflict, forbidden, notFound, validationFailed } from '../lib/errors.js';
 import {
@@ -141,6 +145,14 @@ async function notify(userId, requestId, kind, title, body) {
 
 async function requestRecipients(request) {
   const businessOwner = (await queryOne('SELECT owner_user_id FROM businesses WHERE id = ?', request.business_id))?.owner_user_id;
+  // A staff member works the delivery desk too, so business-side delivery
+  // notifications reach the whole active team, not only the owner.
+  const businessStaff = (await queryAll(
+    `SELECT u.id FROM staff_members sm
+       JOIN users u ON u.id = sm.user_id
+      WHERE sm.business_id = ? AND sm.status = 'active'`,
+    request.business_id
+  )).map((row) => row.id);
   const organizationOwner = request.organization_id ? (await queryOne('SELECT owner_user_id FROM logistics_organizations WHERE id = ?', request.organization_id))?.owner_user_id : null;
   // Spec 40 — being handed the job through an assignment counts the same as
   // being named on the request itself.
@@ -148,7 +160,28 @@ async function requestRecipients(request) {
     ?? (await queryOne('SELECT rider_id FROM delivery_assignments WHERE delivery_request_id = ? AND released_at IS NULL AND rider_id IS NOT NULL', request.id))?.rider_id
     ?? null;
   const riderUser = riderId ? (await queryOne('SELECT user_id FROM logistics_riders WHERE id = ?', riderId))?.user_id : null;
-  return { businessOwner, organizationOwner, riderUser };
+  return { businessOwner, businessStaff, organizationOwner, riderUser };
+}
+
+/// The owner or an active staff member acting for the business behind a request.
+async function businessViewerFor(req) {
+  if (req.auth.role === 'business') {
+    return findBusinessForUser(req.auth.userId);
+  }
+  if (req.auth.role === 'staff') {
+    const context = await findStaffContextForUser(req.auth.userId);
+    return context && context.staff.status === 'active' ? context.business : null;
+  }
+  return null;
+}
+
+/// One delivery event to the owner and every active staff member.
+async function notifyBusiness(request, kind, title, body) {
+  const recipients = await requestRecipients(request);
+  await notify(recipients.businessOwner, request.id, kind, title, body);
+  for (const userId of recipients.businessStaff) {
+    await notify(userId, request.id, kind, title, body);
+  }
 }
 
 function publicOrganization(row) {
@@ -591,7 +624,7 @@ logisticsRouter.post('/requests', requireBusiness, async (req, res) => {
 logisticsRouter.get('/requests/:id', async (req, res) => {
   const request = await requestRow(req.params.id);
   const recipients = await requestRecipients(request);
-  const allowed = [recipients.businessOwner, recipients.organizationOwner, recipients.riderUser];
+  const allowed = [recipients.businessOwner, ...recipients.businessStaff, recipients.organizationOwner, recipients.riderUser];
   if (!allowed.includes(req.auth.userId)) throw notFound('That delivery request does not exist.');
 
   const sale = await queryOne('SELECT * FROM transactions WHERE id = ?', request.transaction_id);
@@ -634,13 +667,13 @@ logisticsRouter.get('/requests/:id', async (req, res) => {
 
 logisticsRouter.get('/requests/:id/events', async (req, res) => {
   const request = await requestRow(req.params.id); const recipients = await requestRecipients(request);
-  if (![recipients.businessOwner, recipients.organizationOwner, recipients.riderUser].includes(req.auth.userId)) throw notFound('That delivery request does not exist.');
+  if (![recipients.businessOwner, ...recipients.businessStaff, recipients.organizationOwner, recipients.riderUser].includes(req.auth.userId)) throw notFound('That delivery request does not exist.');
   res.json({ events: (await queryAll('SELECT e.*, u.full_name FROM delivery_request_events e JOIN users u ON u.id = e.actor_user_id WHERE e.delivery_request_id = ? ORDER BY e.created_at', request.id)).map((row) => ({ id: row.id, eventType: row.event_type, note: row.note, actorName: row.full_name, createdAt: row.created_at })) });
 });
 
 logisticsRouter.get('/requests', async (req, res) => {
   let where; let value;
-  if (req.auth.role === 'business') { const business = await findBusinessForUser(req.auth.userId); if (!business) return res.json({ deliveryRequests: [] }); where = 'd.business_id = ?'; value = business.id; }
+  if (req.auth.role === 'business' || req.auth.role === 'staff') { const business = await businessViewerFor(req); if (!business) return res.json({ deliveryRequests: [] }); where = 'd.business_id = ?'; value = business.id; }
   else if (req.auth.role === 'logistics_partner') { const org = await organizationForUser(req.auth.userId); if (!org) return res.json({ deliveryRequests: [] }); where = 'd.organization_id = ?'; value = org.id; }
   else { const rider = await riderForUser(req.auth.userId); if (!rider) return res.json({ deliveryRequests: [] }); where = 'd.rider_id = ? OR d.id IN (SELECT delivery_request_id FROM delivery_assignments WHERE rider_id = ? AND released_at IS NULL)'; value = rider.id; const rows = await queryAll(`SELECT d.*, t.transaction_number, b.business_name, o.name AS organization_name, u.full_name AS rider_name FROM delivery_requests d JOIN transactions t ON t.id=d.transaction_id JOIN businesses b ON b.id=d.business_id LEFT JOIN logistics_organizations o ON o.id=d.organization_id LEFT JOIN logistics_riders r ON r.id=COALESCE(d.rider_id, (SELECT a.rider_id FROM delivery_assignments a WHERE a.delivery_request_id=d.id AND a.released_at IS NULL AND a.rider_id IS NOT NULL)) LEFT JOIN users u ON u.id=r.user_id WHERE ${where} ORDER BY d.created_at DESC`, value, value); return res.json({ deliveryRequests: rows.map(publicRequest) }); }
   const rows = await queryAll(`SELECT d.*, t.transaction_number, b.business_name, o.name AS organization_name, u.full_name AS rider_name FROM delivery_requests d JOIN transactions t ON t.id=d.transaction_id JOIN businesses b ON b.id=d.business_id LEFT JOIN logistics_organizations o ON o.id=d.organization_id LEFT JOIN logistics_riders r ON r.id=COALESCE(d.rider_id, (SELECT a.rider_id FROM delivery_assignments a WHERE a.delivery_request_id=d.id AND a.released_at IS NULL AND a.rider_id IS NOT NULL)) LEFT JOIN users u ON u.id=r.user_id WHERE ${where} ORDER BY d.created_at DESC`, value);
@@ -652,7 +685,7 @@ logisticsRouter.patch('/requests/:id/quote', requireRole('logistics_partner'), a
   if (request.organization_id !== org.id) throw notFound('That delivery request does not exist.');
   if (!['requested', 'quoted'].includes(request.status)) throw badRequest('This request can no longer be quoted.');
   await run('UPDATE delivery_requests SET quoted_price_kobo = ?, status = \'quoted\', updated_at = ? WHERE id = ?', body.quoted_price_kobo, new Date().toISOString(), request.id);
-  await event(request.id, req.auth.userId, 'quoted'); await notify((await requestRecipients(request)).businessOwner, request.id, 'quote_received', 'Delivery quote received', 'A provider sent a delivery quote.');
+  await event(request.id, req.auth.userId, 'quoted'); await notifyBusiness(request, 'quote_received', 'Delivery quote received', 'A provider sent a delivery quote.');
   res.json({ deliveryRequest: publicRequest(await requestRow(request.id)) });
 });
 
@@ -689,7 +722,7 @@ logisticsRouter.patch('/requests/:id/assign', requireRole('logistics_partner'), 
   });
   const assignedRider = body.rider_id ? (await queryOne('SELECT user_id FROM logistics_riders WHERE id = ?', body.rider_id))?.user_id : null;
   await notify(assignedRider, request.id, 'delivery_assigned', 'New delivery assignment', 'You have been assigned a delivery.');
-  await notify((await requestRecipients(request)).businessOwner, request.id, 'rider_assigned', 'Delivery assigned', 'A rider has been assigned to your delivery.');
+  await notifyBusiness(request, 'rider_assigned', 'Delivery assigned', 'A rider has been assigned to your delivery.');
   res.json({ deliveryRequest: publicRequest(await requestRow(request.id)) });
 });
 
@@ -708,13 +741,13 @@ logisticsRouter.patch('/requests/:id/status', requireRole('logistics_partner', '
     if (['delivered', 'failed', 'declined', 'cancelled'].includes(body.status)) await releaseRequestVehicles(request.id, req.auth.userId);
     await event(request.id, req.auth.userId, body.status, body.failure_reason ?? null);
   });
-  const recipients = await requestRecipients(request); await notify(recipients.businessOwner, request.id, `delivery_${body.status}`, `Delivery ${body.status.replace('_', ' ')}`, body.failure_reason ?? 'Your delivery status was updated.');
+  await notifyBusiness(request, `delivery_${body.status}`, `Delivery ${body.status.replace('_', ' ')}`, body.failure_reason ?? 'Your delivery status was updated.');
   res.json({ deliveryRequest: publicRequest(await requestRow(request.id)) });
 });
 
 logisticsRouter.post('/requests/:id/otp', async (req, res) => {
   const body = parse(deliveryOtpSchema, req.body); const request = await requestRow(req.params.id); const recipients = await requestRecipients(request);
-  if (![recipients.businessOwner, recipients.organizationOwner, recipients.riderUser].includes(req.auth.userId)) throw notFound('That delivery request does not exist.');
+  if (![recipients.businessOwner, ...recipients.businessStaff, recipients.organizationOwner, recipients.riderUser].includes(req.auth.userId)) throw notFound('That delivery request does not exist.');
   if (!['assigned', 'picked_up', 'in_transit', 'delivered'].includes(request.status)) throw badRequest('An OTP can be created after a delivery is assigned.');
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   const expires = new Date(Date.now() + body.expires_in_minutes * 60_000).toISOString();
@@ -739,7 +772,7 @@ logisticsRouter.post('/requests/:id/retry', requireBusiness, async (req, res) =>
 
 logisticsRouter.post('/requests/:id/confirm', async (req, res) => {
   const body = parse(confirmationSchema, req.body); const request = await requestRow(req.params.id);
-  const business = req.auth.role === 'business' ? await findBusinessForUser(req.auth.userId) : null;
+  const business = await businessViewerFor(req);
   const allowedProvider = req.auth.role === 'logistics_partner' && request.organization_id === (await organizationForUser(req.auth.userId))?.id;
   const allowedRider = req.auth.role === 'rider' && (request.rider_id === (await riderForUser(req.auth.userId))?.id || await queryOne('SELECT id FROM delivery_assignments WHERE delivery_request_id = ? AND rider_id = ?', request.id, (await riderForUser(req.auth.userId))?.id));
   if (!(business?.id === request.business_id || allowedProvider || allowedRider)) throw forbidden('You cannot confirm this delivery.');
@@ -751,6 +784,6 @@ logisticsRouter.post('/requests/:id/confirm', async (req, res) => {
     await run('UPDATE delivery_confirmation_otps SET verified_at = ? WHERE id = ?', new Date().toISOString(), otp.id);
   }
   await transaction(async () => { await run('INSERT INTO delivery_confirmations (id, delivery_request_id, confirmed_by_user_id, method, proof_note) VALUES (?, ?, ?, ?, ?)', crypto.randomUUID(), request.id, req.auth.userId, body.method, body.proof_note ?? null); await updateTransactionDelivery(request.transaction_id, 'delivered', req.auth.userId); await event(request.id, req.auth.userId, 'confirmed', body.method); });
-  const recipients = await requestRecipients(request); await notify(recipients.businessOwner, request.id, 'delivery_confirmed', 'Delivery confirmed', 'The customer delivery was confirmed.');
+  await notifyBusiness(request, 'delivery_confirmed', 'Delivery confirmed', 'The customer delivery was confirmed.');
   res.status(201).json({ deliveryRequest: publicRequest(await requestRow(request.id)) });
 });

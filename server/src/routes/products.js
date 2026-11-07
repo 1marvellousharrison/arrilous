@@ -10,6 +10,7 @@ import {
   productListQuerySchema,
   toFieldErrors,
 } from '../lib/validators.js';
+import { syncLowStockNotifications } from '../lib/notifications.js';
 
 export const productRouter = express.Router();
 
@@ -115,6 +116,8 @@ productRouter.post('/', requireOwner, async (req, res) => {
     body.stock_quantity,
     body.image_url ?? null
   );
+  // A product created already below the line is an alert from its first day.
+  await syncLowStockNotifications(req.business.id);
   res.status(201).json({ product: publicProduct(await findOwnedProduct(req.business.id, id)) });
 });
 
@@ -150,6 +153,8 @@ productRouter.patch('/:id', requireOwner, async (req, res) => {
     assignments.push('updated_at = ?');
     values.push(new Date().toISOString(), existing.id);
     await run(`UPDATE products SET ${assignments.join(', ')} WHERE id = ?`, ...values);
+    // Restocking clears the open alert; dropping below the line raises one.
+    await syncLowStockNotifications(req.business.id);
   }
 
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
@@ -164,6 +169,8 @@ productRouter.post('/:id/archive', requireOwner, async (req, res) => {
     new Date().toISOString(),
     existing.id
   );
+  // An archived product is not on the shelf, so it should not keep shouting.
+  await syncLowStockNotifications(req.business.id);
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
@@ -174,6 +181,8 @@ productRouter.post('/:id/restore', requireOwner, async (req, res) => {
     new Date().toISOString(),
     existing.id
   );
+  // Restoring a low product puts it back on the shelf and back on the alert.
+  await syncLowStockNotifications(req.business.id);
   res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
 });
 
@@ -190,5 +199,6 @@ productRouter.delete('/:id', requireOwner, async (req, res) => {
     );
   }
   await run('DELETE FROM products WHERE id = ?', existing.id);
+  await syncLowStockNotifications(req.business.id);
   res.json({ status: 'success' });
 });

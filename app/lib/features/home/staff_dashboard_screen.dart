@@ -105,6 +105,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             ),
             children: [
               _greeting(summary),
+              if (summary?.lowStock.hasIssues == true) ...[
+                const SizedBox(height: AppSpacing.md),
+                _lowStockAlert(summary!.lowStock),
+              ],
               if ((summary?.staff?.staffCode ?? '').isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
                 _codeCard(summary!.staff!),
@@ -182,6 +186,95 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
           child: Text(action),
         ),
       ],
+    );
+  }
+
+  /// Staff see the shelf warning too: they are the ones at the counter when a
+  /// customer asks for the last one. It is bigger than a tile and names the
+  /// products so the message is actionable without opening the catalog first.
+  Widget _lowStockAlert(LowStockSummary lowStock) {
+    final theme = Theme.of(context);
+    final out = lowStock.outOfStock;
+    return AppCard(
+      color: AppColors.danger.withValues(alpha: 0.08),
+      borderColor: AppColors.danger.withValues(alpha: 0.50),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      onTap: widget.onOpenProducts,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.danger.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.danger,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  out > 0 ? 'STOCK ALERT' : 'LOW STOCK',
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  lowStock.headline,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (out > 0)
+                  Text(
+                    '$out already out of stock',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                if (lowStock.productNames.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    lowStock.productNames,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: widget.onOpenProducts,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      foregroundColor: AppColors.danger,
+                    ),
+                    child: const Text('Check products'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

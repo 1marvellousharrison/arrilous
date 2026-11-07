@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
+import '../state/app_notifications_repository.dart';
 import '../state/auth_repository.dart';
 import '../state/transaction_repository.dart';
 
@@ -37,6 +38,41 @@ class LogisticsSummary {
       deliveryFailures == 0 &&
       nearbyProviders == 0 &&
       nearbyRiders == 0;
+}
+
+/// The shelf as the dashboard sees it: every active product at or below the
+/// low-stock line, emptiest first.
+class LowStockSummary {
+  const LowStockSummary({
+    required this.count,
+    required this.outOfStock,
+    required this.products,
+  });
+
+  factory LowStockSummary.fromJson(Map<String, dynamic> json) => LowStockSummary(
+        count: (json['count'] as num?)?.toInt() ?? 0,
+        outOfStock: (json['outOfStock'] as num?)?.toInt() ?? 0,
+        products: (json['products'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(LowStockProduct.fromJson)
+            .toList(growable: false),
+      );
+
+  static const empty = LowStockSummary(count: 0, outOfStock: 0, products: []);
+
+  final int count;
+  final int outOfStock;
+  final List<LowStockProduct> products;
+
+  bool get hasIssues => count > 0;
+
+  /// The line the owner reads first, e.g. "3 products need restocking".
+  String get headline => count == 1
+      ? '1 product needs restocking'
+      : '$count products need restocking';
+
+  String get productNames =>
+      products.map((product) => product.name).where((name) => name.isNotEmpty).join(', ');
 }
 
 /// The signed-in staff member, as the dashboard needs them: who they are and
@@ -175,6 +211,7 @@ class DashboardSummary {
     required this.customerCount,
     required this.logistics,
     required this.recent,
+    this.lowStock = LowStockSummary.empty,
     this.staff,
     this.periods,
     this.topProducts = const [],
@@ -206,6 +243,9 @@ class DashboardSummary {
       logistics: LogisticsSummary.fromJson(
         (json['logistics'] as Map<String, dynamic>?) ?? const {},
       ),
+      lowStock: json['lowStock'] is Map<String, dynamic>
+          ? LowStockSummary.fromJson(json['lowStock'] as Map<String, dynamic>)
+          : LowStockSummary.empty,
       recent: recent
           .whereType<Map<String, dynamic>>()
           .map(Transaction.fromJson)
@@ -239,6 +279,9 @@ class DashboardSummary {
   /// Spec 41 — delivery workload and nearby supply, computed by the API against
   /// this business's own pickup city.
   final LogisticsSummary logistics;
+
+  /// The shelf warning the owner and staff see on the first screen.
+  final LowStockSummary lowStock;
 
   final List<Transaction> recent;
 

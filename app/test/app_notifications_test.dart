@@ -114,4 +114,53 @@ void main() {
     final patch = log.firstWhere((request) => request.method == 'PATCH');
     expect(patch.url.path, endsWith('/notifications/note-1/read'));
   });
+
+  test('load reads the unread breakdown and the low-stock products', () async {
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/auth/login')) return json(sessionBody);
+      if (request.url.path == '/api/v1/notifications') {
+        return json({
+          'notifications': <Object>[],
+          'unreadCount': 3,
+          'counts': {
+            'unread': 3,
+            'lowStock': 2,
+            'outOfStock': 1,
+            'errors': 1,
+            'warnings': 2,
+          },
+          'lowStock': {
+            'count': 2,
+            'outOfStock': 1,
+            'products': [
+              {'id': 'p1', 'name': 'Milk', 'stockQuantity': 0, 'severity': 'error'},
+              {'id': 'p2', 'name': 'Sugar', 'stockQuantity': 4, 'severity': 'warning'},
+            ],
+          },
+        });
+      }
+      return json(<String, Object>{});
+    });
+    final api = ApiClient(baseUrl: base, client: client);
+    final auth = AuthRepository(
+      api,
+      SessionStore(secure: FakeUnavailableSecureStorage()),
+    );
+    await auth.signIn(identifier: 'ada@example.com', password: 'Str0ngPass!23');
+    final app = AppNotificationsRepository(
+      api: api,
+      token: auth.session?.accessToken,
+    );
+
+    await app.load();
+
+    expect(app.unreadCount, 3);
+    expect(app.lowStockCount, 2);
+    expect(app.outOfStockCount, 1);
+    expect(app.errorCount, 1);
+    expect(app.hasLowStock, isTrue);
+    expect(app.lowStockProducts.map((product) => product.name), ['Milk', 'Sugar']);
+    expect(app.lowStockProducts.first.isOutOfStock, isTrue);
+  });
 }

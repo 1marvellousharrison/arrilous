@@ -215,8 +215,7 @@ void main() {
   /// (contact number, city, area, state), but not the instant the page lands:
   /// the prompt waits a couple of seconds, then leads to the screen that
   /// collects them.
-  testWidgets('an owner missing logistics details is prompted on launch, after a short wait', (tester) async {
-    useTallSurface(tester);
+  testWidgets('an owner missing logistics details is prompted on launch, after a short wait', (tester) async {    useTallSurface(tester);
     await pumpShell(tester, profile: businessProfile(phone: '+2348012345678'));
 
     expect(find.text('Complete your business details'), findsNothing, reason: 'not the instant the page lands');
@@ -493,5 +492,97 @@ void main() {
     expect(find.text('Ada provisions'), findsOneWidget);
     expect(find.text('ada provisions'), findsNothing);
     expect(find.byType(BusinessLogoAvatar), findsWidgets);
+  });
+
+  testWidgets('a low-stock alert marks the profile tab and names the products',
+      (tester) async {
+    useTallSurface(tester);
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/auth/login')) return json(sessionBody);
+      if (request.url.path.endsWith('/business')) {
+        return json(businessProfile(
+          phone: '+2348012345678',
+          area: 'Allen Hill',
+        ));
+      }
+      if (request.url.path == '/api/v1/notifications') {
+        return json({
+          'notifications': [
+            {
+              'id': 'n1',
+              'type': 'low_stock',
+              'title': 'Out of stock',
+              'message': 'Milk is out of stock.',
+              'severity': 'error',
+              'productId': 'p1',
+              'readAt': null,
+              'createdAt': '2026-11-01T09:00:00.000Z',
+            },
+          ],
+          'unreadCount': 1,
+          'counts': {
+            'unread': 1,
+            'lowStock': 2,
+            'outOfStock': 1,
+            'errors': 1,
+            'warnings': 1,
+          },
+          'lowStock': {
+            'count': 2,
+            'outOfStock': 1,
+            'products': [
+              {'id': 'p1', 'name': 'Milk', 'stockQuantity': 0, 'severity': 'error'},
+              {'id': 'p2', 'name': 'Sugar', 'stockQuantity': 4, 'severity': 'warning'},
+            ],
+          },
+        });
+      }
+      return json(<String, Object>{});
+    });
+
+    final api = ApiClient(baseUrl: base, client: client);
+    final auth = AuthRepository(
+      api,
+      SessionStore(secure: FakeUnavailableSecureStorage()),
+    );
+    await auth.signIn(identifier: 'ada@example.com', password: 'Str0ngPass!23');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShellScreen(
+          user: auth.session!.user,
+          business: BusinessRepository(api, auth),
+          catalog: CatalogRepository(api, auth),
+          customers: CustomerRepository(api, auth),
+          transactions: TransactionRepository(api, auth),
+          dashboard: DashboardRepository(api, auth),
+          logistics: LogisticsRepository(api, auth),
+          wallet: WalletRepository(api, auth),
+          staff: StaffRepository(api, auth),
+          ai: AiRepository(api: api, token: auth.session?.accessToken),
+          appNotifications: AppNotificationsRepository(
+            api: api,
+            token: auth.session?.accessToken,
+          ),
+          onOpenSettings: () {},
+          onSignOut: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The Profile tab carries the low-stock count, not merely the unread count.
+    expect(find.text('2'), findsWidgets);
+
+    await tester.tap(find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.text('Profile'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stock alert'), findsOneWidget);
+    expect(find.text('2 products need restocking'), findsOneWidget);
+    expect(find.textContaining('Milk'), findsOneWidget);
+    expect(find.text('Check products'), findsOneWidget);
   });
 }
