@@ -87,10 +87,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final bytes = await xfile.readAsBytes();
       final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       final res = await widget.ai.importImage(imageDataUrl: dataUrl, source: 'screenshot');
-      final raw = res?['import'];
+      final raw = res['import'];
       final importId = raw is Map<String, dynamic> ? raw['id'] as String? : null;
       if (importId == null) {
-        _snack('The screenshot could not be queued. Please try again.');
+        _snack('The screenshot was uploaded but no draft came back. Pull to refresh the chat and try again.');
         return;
       }
 

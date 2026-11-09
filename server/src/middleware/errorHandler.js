@@ -23,6 +23,15 @@ export function errorHandler(error, req, res, _next) {
     });
   }
 
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({
+      error: {
+        code: 'payload_too_large',
+        message: 'That image is too large. Choose a smaller screenshot and try again.',
+      },
+    });
+  }
+
   if (!config.isProd) {
     console.error(`[error] ${req.method} ${req.path}`, error);
   }

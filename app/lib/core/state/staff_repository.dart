@@ -49,6 +49,48 @@ class StaffMember {
       };
 }
 
+/// One event a staff member caused — a sale, a restock note that mentions them,
+/// an AI draft warning. The staff page lists these beside their sales so the
+/// owner can read a working day without opening each transaction.
+class StaffActivity {
+  const StaffActivity({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.message,
+    required this.severity,
+    required this.createdAt,
+    this.transactionId,
+    this.productId,
+    this.orderImportId,
+  });
+
+  factory StaffActivity.fromJson(Map<String, dynamic> json) => StaffActivity(
+        id: json['id'] as String? ?? '',
+        type: json['type'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        message: json['message'] as String? ?? '',
+        severity: json['severity'] as String? ?? 'info',
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
+        transactionId: json['transactionId'] as String?,
+        productId: json['productId'] as String?,
+        orderImportId: json['orderImportId'] as String?,
+      );
+
+  final String id;
+  final String type;
+  final String title;
+  final String message;
+  final String severity;
+  final DateTime? createdAt;
+  final String? transactionId;
+  final String? productId;
+  final String? orderImportId;
+
+  bool get isError => severity == 'error';
+  bool get isWarning => severity == 'warning';
+}
+
 /// Owner-side staff management: adding staff (which issues their code), listing
 /// them, enabling or disabling them, and reading one staff member's sales.
 class StaffRepository extends ChangeNotifier {
@@ -133,6 +175,18 @@ class StaffRepository extends ChangeNotifier {
     return rows
         .whereType<Map<String, dynamic>>()
         .map(Transaction.fromJson)
+        .toList(growable: false);
+  }
+
+  /// The activity this staff member caused, newest first.
+  Future<List<StaffActivity>> activity(String id) async {
+    final data = await _api.get('/staff/$id/notifications', token: _token)
+        as Map<String, dynamic>;
+    final rows = data['notifications'];
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(StaffActivity.fromJson)
         .toList(growable: false);
   }
 

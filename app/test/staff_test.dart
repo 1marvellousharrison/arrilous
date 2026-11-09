@@ -491,6 +491,63 @@ void main() {
       expect(find.text('Musa Bello is now disabled.'), findsOneWidget);
     });
 
+    testWidgets('lists the activity this staff member caused', (tester) async {
+      tester.view.physicalSize = const Size(1000, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final (_, staff) = await signedInStaff((request) async {
+        if (request.url.path.endsWith('/auth/login')) return json(sessionBody());
+        if (request.url.path.endsWith('/notifications')) {
+          return json({
+            'notifications': [
+              {
+                'id': 'note-1',
+                'type': 'sale_recorded',
+                'title': 'Sale recorded',
+                'message': 'Musa Bello recorded sale TXN-2026-00001 (₦15,000.00).',
+                'severity': 'success',
+                'transactionId': 'txn-1',
+                'createdAt': '2026-10-01T09:00:00.000Z',
+              },
+              {
+                'id': 'note-2',
+                'type': 'restock',
+                'title': 'Restocked Rice',
+                'message': '10 units added; 30 now in stock.',
+                'severity': 'info',
+                'productId': 'product-1',
+                'createdAt': '2026-10-01T10:00:00.000Z',
+              },
+            ],
+          });
+        }
+        if (request.url.path.endsWith('/transactions')) {
+          return json({'transactions': <Object>[]});
+        }
+        return json({'staff': staffJson(status: 'active', sales: 1)});
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StaffDetailScreen(
+            staff: staff,
+            member: StaffMember.fromJson(staffJson(status: 'active', sales: 1)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff activity'), findsOneWidget);
+      expect(find.text('Sale recorded'), findsOneWidget);
+      expect(
+        find.text('Musa Bello recorded sale TXN-2026-00001 (₦15,000.00).'),
+        findsOneWidget,
+      );
+      expect(find.text('Restocked Rice'), findsOneWidget);
+      expect(find.textContaining('10 units added'), findsOneWidget);
+    });
+
     testWidgets('copies the code after the staff has activated', (tester) async {
       tester.view.physicalSize = const Size(1000, 2400);
       tester.view.devicePixelRatio = 1.0;

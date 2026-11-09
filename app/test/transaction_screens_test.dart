@@ -696,6 +696,85 @@ void main() {
       expect(body.containsKey('total_kobo'), isFalse, reason: 'the server owns the total');
     });
 
+    testWidgets('creates a customer from the sale picker and selects them', (tester) async {
+      useTallSurface(tester);
+      var created = false;
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/customers') && request.method == 'POST') {
+          created = true;
+          return json({
+            'customer': {
+              'id': 'customer-1',
+              'businessId': 'business-1',
+              'name': 'Ada Nwosu',
+              'phone': '+2348031234567',
+              'email': null,
+              'notes': null,
+              'createdAt': '2026-10-01T09:00:00.000Z',
+              'updatedAt': '2026-10-01T09:00:00.000Z',
+            },
+          }, status: 201);
+        }
+        if (request.url.path.endsWith('/customers')) {
+          return json({
+            'customers': created
+                ? [
+                    {
+                      'id': 'customer-1',
+                      'businessId': 'business-1',
+                      'name': 'Ada Nwosu',
+                      'phone': '+2348031234567',
+                      'email': null,
+                      'notes': null,
+                      'createdAt': '2026-10-01T09:00:00.000Z',
+                      'updatedAt': '2026-10-01T09:00:00.000Z',
+                    },
+                  ]
+                : <Object>[],
+          });
+        }
+        return json(<String, Object>{});
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: NewTransactionScreen(
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+          onCreated: (_) {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tapText(tester, 'Walk-in customer (no account)');
+      expect(find.text('Who is this for?'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'New customer'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Customer name'),
+        'Ada Nwosu',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Phone number'),
+        '8031234567',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Add customer'));
+      await tester.pumpAndSettle();
+
+      // The form saves, pops back through the sheet, and the sale now carries
+      // the new customer instead of falling back to a walk-in.
+      final post = log.firstWhere(
+        (r) => r.method == 'POST' && r.url.path.endsWith('/customers'),
+      );
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      expect(body['name'], 'Ada Nwosu');
+      expect(body['phone'], '+2348031234567');
+      expect(find.text('Ada Nwosu'), findsOneWidget);
+      expect(find.text('Walk-in customer (no account)'), findsNothing);
+    });
+
     testWidgets('records a one-off line with its own price', (tester) async {
       useTallSurface(tester);
       final repos = await signInOwner((request) async {

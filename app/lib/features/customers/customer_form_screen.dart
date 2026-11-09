@@ -132,7 +132,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     });
 
     try {
-      await widget.customers.save(
+      final saved = await widget.customers.save(
         id: widget.customer?.id,
         name: _name.text.trim(),
         // The field holds the ten national digits; the API stores the full
@@ -144,7 +144,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       messenger.showSnackBar(
         SnackBar(content: Text(_isEditing ? 'Customer updated.' : 'Customer added.')),
       );
-      navigator.pop();
+      // Returning the saved customer lets a picker select it immediately
+      // instead of making the user find the row it just created.
+      navigator.pop(saved);
     } on ApiException catch (error) {
       _applyError(error);
     } on NetworkException catch (error) {

@@ -24,11 +24,11 @@ class StaffDashboardScreen extends StatefulWidget {
     required this.business,
     required this.user,
     required this.onOpenTransaction,
-    required this.onManualEntry,
+    required this.onNewSale,
     required this.onSeeAllTransactions,
     required this.onAddCustomer,
     required this.onOpenProducts,
-    required this.onGoToAiChat,
+    required this.onOpenProfile,
     required this.onGoToLogistics,
     super.key,
   });
@@ -37,11 +37,14 @@ class StaffDashboardScreen extends StatefulWidget {
   final BusinessRepository business;
   final AuthUser user;
   final ValueChanged<Transaction> onOpenTransaction;
-  final VoidCallback onManualEntry;
+
+  /// Opens the same choice the owner gets: manual, screenshot or AI. A staff
+  /// member sells the same way the owner does.
+  final VoidCallback onNewSale;
   final VoidCallback onSeeAllTransactions;
   final VoidCallback onAddCustomer;
   final VoidCallback onOpenProducts;
-  final VoidCallback onGoToAiChat;
+  final VoidCallback onOpenProfile;
   final VoidCallback onGoToLogistics;
 
   @override
@@ -522,7 +525,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
           children: [
             Expanded(
               child: FilledButton.icon(
-                onPressed: widget.onManualEntry,
+                onPressed: widget.onNewSale,
                 icon: const Icon(Icons.point_of_sale_outlined, size: 18),
                 label: const Text(
                   'New sale',
@@ -554,40 +557,14 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: widget.onOpenProducts,
-                icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                label: const Text(
-                  'Products',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: widget.onGoToAiChat,
-                icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                label: const Text(
-                  'Import sale',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                ),
-              ),
-            ),
-          ],
+        OutlinedButton.icon(
+          onPressed: widget.onOpenProducts,
+          icon: const Icon(Icons.inventory_2_outlined, size: 18),
+          label: const Text('Products'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          ),
         ),
       ],
     );
@@ -660,7 +637,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             FilledButton.icon(
-              onPressed: widget.onManualEntry,
+              onPressed: widget.onNewSale,
               icon: const Icon(Icons.add),
               label: const Text('Record your first sale'),
             ),
@@ -814,7 +791,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final name = business?.displayName ?? 'Your shop';
     final location = business?.location?.oneLine ?? 'Location not set yet';
     return AppCard(
-      onTap: widget.onOpenProducts,
+      onTap: widget.onOpenProfile,
       child: Row(
         children: [
           BusinessLogoAvatar(

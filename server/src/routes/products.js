@@ -11,7 +11,11 @@ import {
   productListQuerySchema,
   toFieldErrors,
 } from '../lib/validators.js';
-import { syncLowStockNotifications } from '../lib/notifications.js';
+import {
+  actorDisplayName,
+  safeAddAppNotification,
+  syncLowStockNotifications,
+} from '../lib/notifications.js';
 
 export const productRouter = express.Router();
 
@@ -184,7 +188,20 @@ productRouter.post('/:id/restock', requireOwner, async (req, res) => {
   // More stock usually clears the warning; the sync decides that from the new
   // figure rather than the client guessing.
   await syncLowStockNotifications(req.business.id);
-  res.json({ product: publicProduct(await findOwnedProduct(req.business.id, existing.id)) });
+  const updated = await findOwnedProduct(req.business.id, existing.id);
+  const actorName = await actorDisplayName(req.auth.userId);
+  await safeAddAppNotification({
+    businessId: req.business.id,
+    productId: updated.id,
+    actorUserId: req.auth.userId,
+    type: 'restock',
+    title: `Restocked ${updated.name}`,
+    message:
+      `${body.quantity} ${body.quantity === 1 ? 'unit' : 'units'} added${actorName ? ` by ${actorName}` : ''} · ` +
+      `${updated.stock_quantity} now in stock`,
+    severity: 'success',
+  });
+  res.json({ product: publicProduct(updated) });
 });
 
 // Archive rather than delete: transaction items reference this row, and Phase 3

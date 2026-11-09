@@ -5,7 +5,12 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireBusiness } from '../middleware/business.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { recordCreation } from '../lib/history.js';
-import { addAppNotification } from '../lib/notifications.js';
+import {
+  actorDisplayName,
+  addAppNotification,
+  nairaText,
+  safeAddAppNotification,
+} from '../lib/notifications.js';
 import { config } from '../config.js';
 
 export const aiRouter = express.Router();
@@ -16,9 +21,14 @@ function now() {
 }
 
 aiRouter.get('/chat', async (req, res) => {
+  // A staff member's AI page is their own: their uploads, their drafts, their
+  // conversation. Only the owner reads the whole business's chat history.
+  const mine = req.staff ? req.staff.user_id : null;
   const messages = await queryAll(
-    'SELECT * FROM ai_chat_messages WHERE business_id = ? ORDER BY created_at ASC LIMIT 200',
-    req.business.id
+    `SELECT * FROM ai_chat_messages
+      WHERE business_id = ?${mine ? ' AND user_id = ?' : ''}
+      ORDER BY created_at ASC LIMIT 200`,
+    ...(mine ? [req.business.id, mine] : [req.business.id])
   );
   res.json({
     messages: messages.map((m) => ({
@@ -48,11 +58,12 @@ aiRouter.post('/import', async (req, res) => {
     `SELECT oi.*, t.transaction_number
        FROM order_imports oi
        LEFT JOIN transactions t ON t.id = oi.transaction_id
-      WHERE oi.business_id = ? AND oi.image_url = ?
+      WHERE oi.business_id = ? AND oi.user_id = ? AND oi.image_url = ?
         AND oi.status IN ('processing', 'extracted', 'review')
         AND oi.created_at >= ?
       ORDER BY oi.created_at DESC LIMIT 1`,
     req.business.id,
+    req.auth.userId,
     image,
     since
   );
@@ -124,6 +135,7 @@ aiRouter.post('/import', async (req, res) => {
         await addAppNotification({
           businessId: req.business.id,
           userId: req.auth.userId,
+          actorUserId: req.auth.userId,
           importId,
           type: 'import_failed',
           title: 'Screenshot import failed',
@@ -209,17 +221,31 @@ async function processImport({ importId, businessId, userId, image }) {
 
   if (missingFields.length > 0) {
     // One notification per import, not one per missing field: a single order
-    // should not flood the bell.
-    await run(
-      'INSERT INTO notifications (id, business_id, user_id, order_import_id, type, title, message, severity, created_at) VALUES (?, ?, ?, ?, \'order_import_incomplete\', ?, ?, \'warning\', ?)',
-      crypto.randomUUID(),
+    // should not flood the bell. It is addressed to the person who uploaded it,
+    // so a staff member's draft does not appear on a colleague's phone.
+    await safeAddAppNotification({
       businessId,
       userId,
+      actorUserId: userId,
       importId,
-      'Order draft needs details',
-      `Missing: ${missingFields.map(missingFieldLabel).join(', ')}.`,
-      updatedAt
-    );
+      type: 'order_import_incomplete',
+      title: 'Order draft needs details',
+      message: `Missing: ${missingFields.map(missingFieldLabel).join(', ')}.`,
+      severity: 'warning',
+      createdAt: updatedAt,
+    });
+  } else {
+    await safeAddAppNotification({
+      businessId,
+      userId,
+      actorUserId: userId,
+      importId,
+      type: 'order_import_ready',
+      title: 'Screenshot ready to review',
+      message: `Extracted ${summary}. Open the draft to confirm the sale.`,
+      severity: 'info',
+      createdAt: updatedAt,
+    });
   }
 }
 
@@ -698,6 +724,9 @@ aiRouter.delete('/imports/:id', async (req, res) => {
     req.business.id
   );
   if (!imp) throw notFound('Import not found');
+  if (req.staff && imp.user_id !== req.staff.user_id) {
+    throw notFound('Import not found');
+  }
 
   // A draft that became a sale is a recorded transaction and must stay. The
   // chat messages and notification cascade with the import row.
@@ -710,25 +739,28 @@ aiRouter.delete('/imports/:id', async (req, res) => {
 });
 
 aiRouter.get('/imports', async (req, res) => {
+  const mine = req.staff ? req.staff.user_id : null;
   const imports = await queryAll(
     `SELECT oi.*, t.transaction_number
        FROM order_imports oi
        LEFT JOIN transactions t ON t.id = oi.transaction_id
-      WHERE oi.business_id = ?
+      WHERE oi.business_id = ?${mine ? ' AND oi.user_id = ?' : ''}
       ORDER BY oi.created_at DESC`,
-    req.business.id
+    ...(mine ? [req.business.id, mine] : [req.business.id])
   );
   res.json({ imports: imports.map(formatImport) });
 });
 
 aiRouter.get('/imports/:id', async (req, res) => {
+  const mine = req.staff ? req.staff.user_id : null;
   const imp = await queryOne(
     `SELECT oi.*, t.transaction_number
        FROM order_imports oi
        LEFT JOIN transactions t ON t.id = oi.transaction_id
-      WHERE oi.id = ? AND oi.business_id = ?`,
-    req.params.id,
-    req.business.id
+      WHERE oi.id = ? AND oi.business_id = ?${mine ? ' AND oi.user_id = ?' : ''}`,
+    ...(mine
+      ? [req.params.id, req.business.id, mine]
+      : [req.params.id, req.business.id])
   );
   if (!imp) throw notFound('Import not found');
 
@@ -758,6 +790,9 @@ aiRouter.get('/customers/match', async (req, res) => {
 aiRouter.post('/imports/:id/complete', async (req, res) => {
   const imp = await queryOne('SELECT * FROM order_imports WHERE id = ? AND business_id = ?', req.params.id, req.business.id);
   if (!imp) throw notFound('Import not found');
+  if (req.staff && imp.user_id !== req.staff.user_id) {
+    throw notFound('Import not found');
+  }
   if (imp.transaction_id) {
     throw badRequest('This order was already created.');
   }
@@ -945,6 +980,21 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
       JSON.stringify({ transactionId: txnId, incomplete: false, customerId: customer.id }),
       now()
     );
+  });
+
+  // A screenshot sale is still a sale: the owner hears about it, and a staff
+  // sale names the staff.
+  const actorName = await actorDisplayName(req.auth.userId);
+  await safeAddAppNotification({
+    businessId,
+    transactionId: txnId,
+    actorUserId: req.auth.userId,
+    type: 'sale_recorded',
+    title: req.staff ? 'Staff recorded a sale' : 'New sale recorded',
+    message: req.staff
+      ? `${actorName ?? 'Staff'} recorded sale ${txnNumber} · ${nairaText(total)}`
+      : `Sale ${txnNumber} recorded · ${nairaText(total)}`,
+    severity: 'success',
   });
 
   res.json({

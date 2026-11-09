@@ -436,11 +436,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   business: widget.business,
                   user: widget.user,
                   onOpenTransaction: _openTransaction,
-                  onManualEntry: _manualTransaction,
+                  onNewSale: _newTransaction,
                   onSeeAllTransactions: () => _onTab(1),
                   onAddCustomer: _addCustomer,
                   onOpenProducts: _openProducts,
-                  onGoToAiChat: () => _onTab(2),
+                  onOpenProfile: () => _onTab(4),
                   onGoToLogistics: () => _onTab(3),
                 )
               : DashboardScreen(

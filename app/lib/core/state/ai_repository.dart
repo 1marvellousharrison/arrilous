@@ -79,15 +79,26 @@ class AiRepository extends ChangeNotifier {
   /// Queues the image and returns immediately. The server reads it in the
   /// background, so this request is short even on a cold backend; call
   /// [waitForImport] to follow the draft until extraction finishes.
-  Future<Map<String, dynamic>?> importImage({
+  ///
+  /// A missing session token is reported as an expired session rather than
+  /// returning `null`: the old null made the screen claim the screenshot could
+  /// not be queued, which hid the real cause.
+  Future<Map<String, dynamic>> importImage({
     String? imageDataUrl,
     String? imageUrl,
     String source = 'screenshot',
   }) async {
-    if (_token == null) return null;
+    final token = _token;
+    if (token == null) {
+      throw ApiException(
+        401,
+        'unauthorized',
+        'Your session has expired. Sign in again to upload a screenshot.',
+      );
+    }
     return await _api.post(
       '/ai/import',
-      token: _token,
+      token: token,
       // A cold Render instance can take half a minute to wake, and the image
       // itself can be a few megabytes. The extraction no longer happens inside
       // this request, so this is only the upload + queue time.

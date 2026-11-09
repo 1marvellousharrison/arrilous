@@ -447,6 +447,28 @@ Two decisions worth knowing before reading a number:
   }
 ```
 
+### Staff
+
+Staff accounts (see `docs/staff-accounts.md`) are added by the owner, who never
+sets or sees their password: adding one issues a permanent code, and the staff
+sets their own password at activation.
+
+| Method | Route | Notes |
+|---|---|---|
+| `POST` | `/staff` | add a staff and issue their code (`201`); **owner only** |
+| `GET` | `/staff` | the business's staff, each with a sales count |
+| `GET` | `/staff/:id` | one staff member |
+| `PATCH` | `/staff/:id` | rename, re-phone, or disable/re-enable |
+| `GET` | `/staff/:id/transactions` | only the sales this staff recorded (newest first, at most 100) |
+| `GET` | `/staff/:id/notifications` | the activity this staff member caused (`actor_user_id`), newest first, at most 100 |
+| `POST` | `/staff/claim` | public: check an unclaimed code |
+| `POST` | `/staff/activate` | public: set the staff password and activate the code |
+
+`GET /staff/:id/notifications` is what the owner's staff page reads beside the
+staff member's sales. It is **owner only**: a staff session gets `403`, because a
+staff member reads their own inbox through `/notifications`, not through another
+person's activity feed.
+
 ### Business analysis
 
 | Method | Route | Notes |
@@ -585,14 +607,29 @@ channel is involved (see `docs/future-integrations.md`).
 
 ### In-app notifications
 
-The general inbox carries app alerts (for example an order draft that still
-needs details) alongside delivery activity in the Profile tab.
+The general inbox carries app alerts (sales, payment/status updates, restocks,
+draft warnings, import failures) alongside delivery activity in the Profile tab.
+It is a complete history, not a sampled feed: the page filters it by Today,
+7 days, 30 days, this year or all time on the client, and groups rows by day (or
+by month for the wider windows).
 
 | Method | Route | Notes |
 |---|---|---|
-| `GET` | `/notifications` | `{ notifications, unreadCount, counts, lowStock }` for the signed-in business |
+| `GET` | `/notifications` | `{ notifications, unreadCount, counts, lowStock }`; `?limit=` 1-500 (default 500) |
 | `PATCH` | `/notifications/:id/read` | marks one read (`200`) |
 | `POST` | `/notifications/read-all` | clears **routine** alerts; low-stock and `error` alerts stay unread (`200`) |
+
+**Audience.** `user_id` is the audience scope, not the author:
+
+- `user_id IS NULL` — business-wide news (sales, status changes, restocks);
+- `user_id = <id>` — a message for that one user (their own drafts and uploads);
+- `actor_user_id` — who caused the event, so the owner can see "by Musa".
+
+A staff inbox is `user_id IS NULL` plus rows where `user_id` is their own. The
+owner is the business and sees every row, including staff-only draft alerts.
+Read and read-all enforce the same scope: a staff member cannot clear another
+person's message. The response gains `actorUserId`/`actorName` on rows that have
+an author.
 
 `GET /notifications` also self-heals the shelf: it raises one open alert per low
 product and resolves an alert whose product has been restocked, archived or
@@ -600,7 +637,7 @@ deleted. The response looks like:
 
 ```jsonc
 {
-  "notifications": [ /* newest first, at most 200 */ ],
+  "notifications": [ /* newest first, at most 500 by default */ ],
   "unreadCount": 4,
   "counts": { "unread": 4, "lowStock": 2, "outOfStock": 1, "errors": 1, "warnings": 3 },
   "lowStock": {
@@ -610,6 +647,12 @@ deleted. The response looks like:
   }
 }
 ```
+
+Events currently emitted: `sale_recorded` (manual and screenshot sales, including
+staff sales with `actorName`), `sale_status` (payment/order/delivery changes),
+`restock`, AI `order_draft` ready/incomplete, and `order_import_failed`. Sale and
+status events carry the `transactionId`; restocks carry `productId`; draft alerts
+carry `orderImportId`. Tapping a row opens the source record and marks it read.
 
 `counts.lowStock` is counted from the shelf itself, not from unread rows, so the
 warning survives a cleared bell and disappears only when the product is healthy.
@@ -635,6 +678,18 @@ background, so the HTTP request never waits for the vision model.
 | `DELETE` | `/ai/imports/:id` | deletes a draft that has not become a sale (`204`); a recorded sale is refused (`400`) |
 | `GET` | `/ai/chat` | the chat thread, including image and draft messages |
 | `GET` | `/ai/customers/match` | finds a saved customer by `name` or `phone` |
+
+**Every AI route is user-scoped.** A staff member sees only the messages,
+drafts, and imports they uploaded; reading, deleting or completing another
+person's draft returns `404`, not `403`, so the draft's existence is not leaked.
+The owner is business-wide and still sees every staff member's drafts. This is
+why each staff member has their own AI/Chats tab: a draft is working material,
+not shared business news.
+
+Screenshots travel as a base64 `imageDataUrl` in the JSON body. The request body
+limit is **12 MB**; a larger upload returns `413 payload_too_large` with a
+readable message instead of a generic server error, so the client can tell the
+user to retry a smaller image.
 
 Catalog prices and names win over anything the model reads: the server rematches
 each line against the catalog before the draft is shown. Phone numbers are

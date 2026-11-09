@@ -83,7 +83,7 @@ class AppNotificationsRepository extends ChangeNotifier {
 }
 
 class AppNotification {
-  AppNotification({required this.id, required this.type, required this.title, required this.message, required this.severity, this.productId, this.orderImportId, this.transactionId, this.readAt, required this.createdAt});
+  AppNotification({required this.id, required this.type, required this.title, required this.message, required this.severity, this.productId, this.orderImportId, this.transactionId, this.actorName, this.readAt, required this.createdAt});
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
     return AppNotification(
@@ -95,6 +95,7 @@ class AppNotification {
       productId: json['productId'] as String?,
       orderImportId: json['orderImportId'] as String?,
       transactionId: json['transactionId'] as String?,
+      actorName: json['actorName'] as String?,
       readAt: json['readAt'] as String?,
       createdAt: json['createdAt'] as String? ?? '',
     );
@@ -108,6 +109,9 @@ class AppNotification {
   final String? productId;
   final String? orderImportId;
   final String? transactionId;
+
+  /// Who caused the event, when another person did — "Amina recorded a sale".
+  final String? actorName;
   final String? readAt;
   final String createdAt;
   bool get isUnread => readAt == null;

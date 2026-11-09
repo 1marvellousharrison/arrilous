@@ -166,6 +166,26 @@ columns mirroring the organization (including `planned_hours`), and (from
 | `0019_transaction_item_image` | `image_url` on `transaction_items` |
 | `0020_order_imports` | `order_imports`, `ai_chat_messages`, `notifications` |
 | `0021_transaction_source_screenshot` | `source` on `transactions` (`manual` \| `screenshot`) |
+| `0022_notification_product` | `product_id` on `notifications` - stock alerts point at the shelf item |
+| `0023_notification_actor` | `actor_user_id` on `notifications` - who caused a sale, status change or restock |
+
+### Notification audience
+
+The general `notifications` table is a business inbox with a per-user scope:
+
+- `business_id` - the tenant the row belongs to;
+- `user_id` NULL = business-wide news (sales, status changes, restocks), a user
+  id = a message for that one person (their draft/AI alerts);
+- `actor_user_id` NULL = system or unknown, otherwise the user who caused the
+  event, joined to `users.full_name` for display;
+- `product_id` / `transaction_id` / `order_import_id` point at the record a tap
+  should open.
+
+A staff inbox is `user_id IS NULL OR user_id = <staff>`. The owner sees every
+row. Read/read-all applies the same scope, so one staff member cannot clear
+another person's message. `order_imports` and `ai_chat_messages` carry the
+uploader's `user_id`, and every `/ai` route filters on it, so staff drafts stay
+private while the owner remains business-wide.
 
 ### Order imports
 

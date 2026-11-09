@@ -23,6 +23,11 @@ import {
   recordNote,
   recordStatusDiff,
 } from '../lib/history.js';
+import {
+  actorDisplayName,
+  nairaText,
+  safeAddAppNotification,
+} from '../lib/notifications.js';
 
 export const transactionRouter = express.Router();
 
@@ -30,6 +35,22 @@ function parse(schema, payload) {
   const result = schema.safeParse(payload ?? {});
   if (!result.success) throw validationFailed(toFieldErrors(result.error));
   return result.data;
+}
+
+const STATUS_LABELS = {
+  order: 'Order',
+  payment: 'Payment',
+  delivery: 'Delivery',
+  completion: 'Completion',
+};
+
+function statusChangeText(changed) {
+  return changed
+    .map(
+      (entry) =>
+        `${STATUS_LABELS[entry.type] ?? entry.type} ${entry.from ?? '—'} → ${entry.to}`
+    )
+    .join(', ');
 }
 
 export function publicTransaction(row, { items = null } = {}) {
@@ -264,6 +285,21 @@ transactionRouter.post('/', async (req, res) => {
     });
   });
 
+  // The owner sees every sale, including one a staff member records, and the
+  // event names the staff so "who sold this?" is answered in the bell itself.
+  const actorName = await actorDisplayName(req.auth.userId);
+  await safeAddAppNotification({
+    businessId,
+    transactionId,
+    actorUserId: req.auth.userId,
+    type: 'sale_recorded',
+    title: req.staff ? 'Staff recorded a sale' : 'New sale recorded',
+    message: req.staff
+      ? `${actorName ?? 'Staff'} recorded sale ${transactionNumber} · ${nairaText(total)}`
+      : `Sale ${transactionNumber} recorded · ${nairaText(total)}`,
+    severity: 'success',
+  });
+
   res.status(201).json({
     transaction: publicTransaction(await findOwnedTransaction(businessId, transactionId), {
       items: await itemsFor(transactionId),
@@ -455,6 +491,25 @@ transactionRouter.patch('/:id/statuses', async (req, res) => {
       await creditSaleToWallet(req.business, current);
     }
   });
+
+  if (changed.length > 0) {
+    const paid = changed.some(
+      (entry) => entry.type === 'payment' && entry.to === 'paid'
+    );
+    const actorName = await actorDisplayName(req.auth.userId);
+    const staffSuffix = req.staff && actorName ? ` by ${actorName}` : '';
+    await safeAddAppNotification({
+      businessId: req.business.id,
+      transactionId: current.id,
+      actorUserId: req.auth.userId,
+      type: 'sale_status',
+      title: paid
+        ? `Payment received for ${current.transaction_number}`
+        : `${current.transaction_number} updated${staffSuffix}`,
+      message: statusChangeText(changed),
+      severity: paid ? 'success' : 'info',
+    });
+  }
 
   res.json({
     transaction: publicTransaction(

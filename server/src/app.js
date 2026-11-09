@@ -29,9 +29,10 @@ export async function createApp({ migrate = true } = {}) {
       credentials: true,
     })
   );
-  // A little headroom for the optional business logo, which rides along as a
-  // downscaled image data URL and can approach a few hundred kilobytes.
-  app.use(express.json({ limit: '1mb' }));
+  // A screenshot upload is base64 image data and a phone photo can be several
+  // megabytes before the client downscales it. The old 1 MB ceiling rejected
+  // large images before the AI route could tell the user what went wrong.
+  app.use(express.json({ limit: '12mb' }));
 
   app.get('/api/v1/health', async (_req, res) => {
     let database = 'down';

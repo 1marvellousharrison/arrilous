@@ -30,6 +30,7 @@ class StaffDetailScreen extends StatefulWidget {
 class _StaffDetailScreenState extends State<StaffDetailScreen> {
   late StaffMember _member = widget.member;
   List<Transaction> _sales = const [];
+  List<StaffActivity> _activity = const [];
   bool _loading = true;
   bool _toggling = false;
   String? _error;
@@ -50,11 +51,13 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
       final results = await Future.wait([
         widget.staff.detail(_member.id),
         widget.staff.sales(_member.id),
+        widget.staff.activity(_member.id),
       ]);
       if (!mounted) return;
       setState(() {
         _member = results[0] as StaffMember;
         _sales = results[1] as List<Transaction>;
+        _activity = results[2] as List<StaffActivity>;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -231,6 +234,76 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
                     _member.isDisabled ? AppColors.success : AppColors.danger,
               ),
             ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              'Staff activity',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            if (_loading)
+              const SizedBox.shrink()
+            else if (_activity.isEmpty)
+              Text(
+                'No activity recorded yet.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              )
+            else
+              for (final event in _activity.take(20))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: AppCard(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          event.isError
+                              ? Icons.error_outline
+                              : event.isWarning
+                                  ? Icons.warning_amber_outlined
+                                  : event.type == 'sale_recorded'
+                                      ? Icons.point_of_sale_outlined
+                                      : event.type == 'restock'
+                                          ? Icons.inventory_2_outlined
+                                          : Icons.notifications_outlined,
+                          size: 18,
+                          color: event.isError
+                              ? AppColors.danger
+                              : event.isWarning
+                                  ? AppColors.warning
+                                  : theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                event.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(event.message, style: theme.textTheme.bodySmall),
+                            ],
+                          ),
+                        ),
+                        if (event.createdAt != null)
+                          Text(
+                            _shortDate(event.createdAt!),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
             const SizedBox(height: AppSpacing.xl),
             Text(
               'Sales by $name',

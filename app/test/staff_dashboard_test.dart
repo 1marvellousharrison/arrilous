@@ -194,10 +194,10 @@ void main() {
     DashboardRepository dashboard,
     BusinessRepository business,
     AuthRepository auth, {
-    VoidCallback? onManualEntry,
+    VoidCallback? onNewSale,
     VoidCallback? onAddCustomer,
     VoidCallback? onOpenProducts,
-    VoidCallback? onGoToAiChat,
+    VoidCallback? onOpenProfile,
     VoidCallback? onGoToLogistics,
   }) async {
     tester.view.physicalSize = const Size(1000, 2600);
@@ -213,11 +213,11 @@ void main() {
             business: business,
             user: auth.session!.user,
             onOpenTransaction: (_) {},
-            onManualEntry: onManualEntry ?? () {},
+            onNewSale: onNewSale ?? () {},
             onSeeAllTransactions: () {},
             onAddCustomer: onAddCustomer ?? () {},
             onOpenProducts: onOpenProducts ?? () {},
-            onGoToAiChat: onGoToAiChat ?? () {},
+            onOpenProfile: onOpenProfile ?? () {},
             onGoToLogistics: onGoToLogistics ?? () {},
           ),
         ),
@@ -280,7 +280,7 @@ void main() {
     var newSale = false;
     var addCustomer = false;
     var products = false;
-    var ai = false;
+    var profile = false;
     var logistics = false;
 
     final (dashboard, business, auth) = await signedInStaff(clientWith(summaryBody()));
@@ -289,27 +289,33 @@ void main() {
       dashboard,
       business,
       auth,
-      onManualEntry: () => newSale = true,
+      onNewSale: () => newSale = true,
       onAddCustomer: () => addCustomer = true,
       onOpenProducts: () => products = true,
-      onGoToAiChat: () => ai = true,
+      onOpenProfile: () => profile = true,
       onGoToLogistics: () => logistics = true,
     );
 
     await tester.tap(find.text('New sale'));
     await tester.tap(find.text('Add customer'));
     await tester.tap(find.text('Products'));
-    await tester.tap(find.text('Import sale'));
     await tester.pumpAndSettle();
 
     expect(newSale, isTrue);
     expect(addCustomer, isTrue);
     expect(products, isTrue);
-    expect(ai, isTrue);
+    // The old staff home had a separate "Import sale" tile; selling now offers
+    // the same manual/screenshot/AI choice as the owner's New sale.
+    expect(find.text('Import sale'), findsNothing);
 
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     expect(logistics, isTrue);
+
+    await tester.ensureVisible(find.text('Your shop'));
+    await tester.tap(find.text('Ada Provisions'));
+    await tester.pumpAndSettle();
+    expect(profile, isTrue);
   });
 
   testWidgets('an empty day invites the first sale instead of showing zeros only', (tester) async {

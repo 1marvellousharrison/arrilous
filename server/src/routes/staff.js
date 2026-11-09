@@ -19,6 +19,7 @@ import {
   publicStaff,
 } from '../lib/staff.js';
 import { hashPassword, randomToken } from '../lib/password.js';
+import { publicNotification } from '../lib/notifications.js';
 import { publicTransaction } from './transactions.js';
 
 /**
@@ -259,6 +260,30 @@ staffRouter.get('/:id/transactions', requireAuth, requireBusiness, requireOwner,
     staff.user_id
   );
   return res.json({ transactions: rows.map((row) => publicTransaction(row)) });
+});
+
+// GET /api/v1/staff/:id/notifications — the activity this staff member caused.
+// The owner's staff page shows it beside the sales, so a busy day is legible
+// without opening every transaction.
+staffRouter.get('/:id/notifications', requireAuth, requireBusiness, requireOwner, async (req, res) => {
+  const staff = await queryOne(
+    'SELECT * FROM staff_members WHERE id = ? AND business_id = ?',
+    req.params.id,
+    req.business.id
+  );
+  if (!staff) throw notFound('That staff member does not exist.');
+
+  const rows = await queryAll(
+    `SELECT n.*, u.full_name AS actor_name
+       FROM notifications n
+       LEFT JOIN users u ON u.id = n.actor_user_id
+      WHERE n.business_id = ? AND n.actor_user_id = ?
+      ORDER BY n.created_at DESC
+      LIMIT 100`,
+    req.business.id,
+    staff.user_id
+  );
+  return res.json({ notifications: rows.map(publicNotification) });
 });
 
 export default staffRouter;

@@ -33,20 +33,32 @@ void main() {
     },
   };
 
-  Map<String, Object?> alertBody({bool unread = true}) => {
-        'id': 'note-1',
+  Map<String, Object?> alertBody({
+    bool unread = true,
+    String id = 'note-1',
+    String title = 'Order draft needs details',
+    String? createdAt = '2026-10-01T09:00:00Z',
+    String? actorName,
+  }) =>
+      {
+        'id': id,
         'type': 'order_import_incomplete',
-        'title': 'Order draft needs details',
+        'title': title,
         'message': 'Missing: delivery fee.',
         'severity': 'warning',
         'orderImportId': 'imp-1',
         'transactionId': null,
+        'actorName': actorName,
         'readAt': unread ? null : '2026-10-01T10:00:00Z',
-        'createdAt': '2026-10-01T09:00:00Z',
+        'createdAt': createdAt,
       };
 
   Future<({AppNotificationsRepository app, LogisticsRepository logistics})>
-      setUpRepos(List<http.Request> log, {required bool unread}) async {
+      setUpRepos(
+    List<http.Request> log, {
+    required bool unread,
+    List<Map<String, Object?>>? alerts,
+  }) async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((request) async {
       log.add(request);
@@ -59,7 +71,7 @@ void main() {
       }
       if (request.url.path.endsWith('/notifications')) {
         return json({
-          'notifications': [alertBody(unread: unread)],
+          'notifications': alerts ?? [alertBody(unread: unread)],
           'unreadCount': unread ? 1 : 0,
         });
       }
@@ -104,7 +116,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Order alerts'), findsOneWidget);
+    expect(find.text('October 2026'), findsOneWidget);
     expect(find.text('Order draft needs details'), findsOneWidget);
     expect(find.text('Missing: delivery fee.'), findsOneWidget);
 
@@ -113,6 +125,52 @@ void main() {
 
     final patch = log.firstWhere((request) => request.method == 'PATCH');
     expect(patch.url.path, endsWith('/notifications/note-1/read'));
+  });
+
+  testWidgets('range chips narrow the history and rows name the staff member', (tester) async {
+    final log = <http.Request>[];
+    final now = DateTime.now().toUtc();
+    final repos = await setUpRepos(
+      log,
+      unread: false,
+      alerts: [
+        alertBody(
+          unread: false,
+          id: 'note-today',
+          title: 'Sale recorded today',
+          createdAt: now.toIso8601String(),
+          actorName: 'Musa Bello',
+        ),
+        alertBody(
+          unread: false,
+          id: 'note-old',
+          title: 'Old restock',
+          createdAt: '2024-03-01T09:00:00Z',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationsScreen(
+          logistics: repos.logistics,
+          appNotifications: repos.app,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // "All" is the default: both the fresh alert and the old one are listed.
+    expect(find.text('Sale recorded today'), findsOneWidget);
+    expect(find.text('Old restock'), findsOneWidget);
+    expect(find.text('by Musa Bello'), findsOneWidget);
+
+    await tester.tap(find.text('7 days').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sale recorded today'), findsOneWidget);
+    expect(find.text('Old restock'), findsNothing,
+        reason: 'the old alert is outside the selected window');
   });
 
   test('load reads the unread breakdown and the low-stock products', () async {

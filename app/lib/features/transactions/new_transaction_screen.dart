@@ -7,6 +7,7 @@ import '../../core/state/transaction_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../widgets/common.dart';
+import '../customers/customer_form_screen.dart';
 
 /// Phase 9 — `+ New Transaction`.
 ///
@@ -423,7 +424,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       isScrollControlled: true,
       builder: (context) => _CustomerPickerSheet(customers: widget.customers),
     );
-    if (!mounted) return;
+    // A dismissed sheet returns null. That means "leave the choice alone", not
+    // "switch back to walk-in" — only an explicit walk-in selection does that.
+    if (!mounted || selected == null) return;
     setState(() => _customer = selected);
   }
 
@@ -539,6 +542,19 @@ class _CustomerPickerSheet extends StatelessWidget {
 
   final CustomerRepository customers;
 
+  /// Opens the customer form on top of the sheet. When it saves, the new
+  /// customer is selected straight away, so a first-time buyer does not fall
+  /// out of the sale to go and find the record they just made.
+  Future<void> _createCustomer(BuildContext context) async {
+    final created = await Navigator.of(context).push<Customer>(
+      MaterialPageRoute<Customer>(
+        builder: (_) => CustomerFormScreen(customers: customers),
+      ),
+    );
+    if (created == null || !context.mounted) return;
+    Navigator.of(context).pop(created);
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -561,21 +577,49 @@ class _CustomerPickerSheet extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(
-                    'Who is this for?',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Who is this for?',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _createCustomer(context),
+                        icon: const Icon(Icons.person_add_alt, size: 16),
+                        label: const Text('New customer'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(
                   child: list.isEmpty
-                      ? const EmptyState(
+                      ? EmptyState(
                           icon: Icons.person_outline,
                           title: 'No customers yet',
-                          message: 'You can add customers from the Customers tab.',
+                          message:
+                              'Add the buyer now and they will be selected for this sale.',
+                          action: FilledButton.icon(
+                            onPressed: () => _createCustomer(context),
+                            icon: const Icon(Icons.person_add_alt, size: 18),
+                            label: const Text('New customer'),
+                          ),
                         )
                       : ListView.builder(
                           controller: controller,

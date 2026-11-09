@@ -8,10 +8,11 @@ import 'delivery_request_detail_screen.dart';
 
 /// Spec 27 — the full notification history on its own page.
 ///
-/// Two streams share this page: order alerts raised by the app itself (an
-/// import that still needs details) and delivery-request activity from the
-/// logistics partner. Each list is shown whole, with nothing sampled away, and
-/// a tap marks an unread item as read.
+/// Two streams share this page: order alerts raised by the app itself (sales,
+/// payments, stock, drafts) and delivery-request activity from the logistics
+/// partner. They are merged into one chronological history and sectioned by
+/// day, or by month when the window is wide enough that days would be noise.
+/// Nothing is sampled away: the range chips only choose how far back to look.
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
     required this.logistics,
@@ -40,7 +41,35 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
+/// How far back the inbox looks. The list itself is complete; these chips are
+/// a lens over the same history, not separate server queries.
+enum _InboxRange { today, week, month, year, all }
+
+extension on _InboxRange {
+  String get label => switch (this) {
+        _InboxRange.today => 'Today',
+        _InboxRange.week => '7 days',
+        _InboxRange.month => '30 days',
+        _InboxRange.year => 'This year',
+        _InboxRange.all => 'All',
+      };
+
+  /// Number of days back from today, or null for "everything".
+  int? get days => switch (this) {
+        _InboxRange.today => 0,
+        _InboxRange.week => 6,
+        _InboxRange.month => 29,
+        _InboxRange.year => 364,
+        _InboxRange.all => null,
+      };
+
+  bool get groupsByMonth =>
+      this == _InboxRange.year || this == _InboxRange.all;
+}
+
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  _InboxRange _range = _InboxRange.all;
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +84,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       await widget.logistics.markAllNotificationsRead();
     });
+  }
+
+  bool _inRange(DateTime? value) {
+    final days = _range.days;
+    if (days == null) return true;
+    if (value == null) return true;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(value.year, value.month, value.day);
+    return !day.isBefore(today.subtract(Duration(days: days)));
   }
 
   @override
@@ -86,9 +125,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             return const EmptyState(
               icon: Icons.notifications_none,
               title: 'No notifications yet',
-              message: 'Order alerts and delivery request activity will be listed here.',
+              message:
+                  'Sales, stock, order alerts and delivery activity will be listed here.',
             );
           }
+
+          final entries = _entries(alerts, notifications);
           return RefreshIndicator(
             onRefresh: () async {
               await logistics.loadNotifications();
@@ -101,39 +143,132 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   _inboxSummary(theme, app),
                   const SizedBox(height: AppSpacing.md),
                 ],
+                _rangeChips(theme),
+                const SizedBox(height: AppSpacing.md),
                 if (app != null && app.lowStockCount > 0) ...[
-                  _sectionTitle(theme, 'Stock warnings'),
                   _lowStockCard(app),
                   const SizedBox(height: AppSpacing.md),
                 ],
-                if (alerts.isNotEmpty) ...[
-                  _sectionTitle(theme, 'Order alerts'),
-                  for (final alert in alerts) _appAlertCard(app!, alert),
-                  if (notifications.isNotEmpty)
-                    const SizedBox(height: AppSpacing.md),
-                ],
-                if (notifications.isNotEmpty) ...[
-                  _sectionTitle(theme, 'Delivery activity'),
-                  if (logistics.unreadCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: Text(
-                        '${logistics.unreadCount} unread',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                if (entries.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.xl),
+                    child: EmptyState(
+                      icon: Icons.event_available_outlined,
+                      title: 'Nothing in this period',
+                      message:
+                          'There is no notification in the selected window. Try a wider range.',
+                      action: TextButton(
+                        onPressed: () =>
+                            setState(() => _range = _InboxRange.all),
+                        child: const Text('Show all history'),
                       ),
                     ),
-                  for (final notification in notifications)
-                    _notificationCard(logistics, notification),
-                ],
+                  )
+                else
+                  ..._sectioned(theme, app, logistics, entries),
+                const SizedBox(height: AppSpacing.xl),
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  /// Merges both streams, keeps the selected window, newest first.
+  List<_InboxEntry> _entries(
+    List<AppNotification> alerts,
+    List<Map<String, dynamic>> logistics,
+  ) {
+    final entries = <_InboxEntry>[];
+    for (final alert in alerts) {
+      final at = DateTime.tryParse(alert.createdAt)?.toLocal();
+      if (!_inRange(at)) continue;
+      entries.add(_InboxEntry.app(alert, at));
+    }
+    for (final notification in logistics) {
+      final at = DateTime.tryParse(
+        notification['createdAt'] as String? ?? '',
+      )?.toLocal();
+      if (!_inRange(at)) continue;
+      entries.add(_InboxEntry.delivery(notification, at));
+    }
+    entries.sort((a, b) {
+      final ad = a.at;
+      final bd = b.at;
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return bd.compareTo(ad);
+    });
+    return entries;
+  }
+
+  List<Widget> _sectioned(
+    ThemeData theme,
+    AppNotificationsRepository? app,
+    LogisticsRepository logistics,
+    List<_InboxEntry> entries,
+  ) {
+    final children = <Widget>[];
+    String? section;
+    for (final entry in entries) {
+      final label = _sectionLabel(entry.at);
+      if (label != section) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(height: AppSpacing.sm));
+        }
+        children.add(_sectionTitle(theme, label));
+        section = label;
+      }
+      children.add(
+        entry.alert != null
+            ? _appAlertCard(entry.alert!)
+            : _notificationCard(logistics, entry.delivery!),
+      );
+    }
+    return children;
+  }
+
+  Widget _rangeChips(ThemeData theme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final range in _InboxRange.values) ...[
+            ChoiceChip(
+              label: Text(range.label),
+              selected: _range == range,
+              onSelected: (_) => setState(() => _range = range),
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              labelStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            if (range != _InboxRange.values.last)
+              const SizedBox(width: AppSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Wider windows group by month; shorter ones by day, where the time of day
+  /// is still useful.
+  String _sectionLabel(DateTime? value) {
+    if (value == null) return 'Earlier';
+    if (_range.groupsByMonth) {
+      return '${_months[value.month - 1]} ${value.year}';
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(value.year, value.month, value.day);
+    final difference = today.difference(day).inDays;
+    if (difference == 0) return 'Today';
+    if (difference == 1) return 'Yesterday';
+    return '${_weekdays[value.weekday - 1]} ${value.day} '
+        '${_months[value.month - 1]}';
   }
 
   Widget _sectionTitle(ThemeData theme, String title) {
@@ -273,17 +408,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       widget.onOpenImport?.call(importId);
     } else if (transactionId != null) {
       widget.onOpenTransaction?.call(transactionId);
+    } else if (productId != null) {
+      widget.onOpenProduct?.call(productId);
     }
   }
 
-  Widget _appAlertCard(AppNotificationsRepository app, AppNotification notification) {
+  Widget _appAlertCard(AppNotification notification) {
     final theme = Theme.of(context);
+    final app = widget.appNotifications;
     final unread = notification.isUnread;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSpacing.md),
-        onTap: () => _openAlert(app, notification),
+        onTap: app == null ? null : () => _openAlert(app, notification),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -292,9 +430,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ? Icons.error_outline
                   : notification.severity == 'warning'
                       ? Icons.warning_amber_outlined
-                      : unread
-                          ? Icons.mark_email_unread_outlined
-                          : Icons.notifications_outlined,
+                      : notification.type == 'sale_recorded'
+                          ? Icons.point_of_sale_outlined
+                          : notification.type == 'sale_status'
+                              ? Icons.payments_outlined
+                              : notification.type == 'restock'
+                                  ? Icons.inventory_2_outlined
+                                  : unread
+                                      ? Icons.mark_email_unread_outlined
+                                      : Icons.notifications_outlined,
               size: 18,
               color: notification.isError
                   ? AppColors.danger
@@ -309,9 +453,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   Text(
                     notification.title,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
                   Text(notification.message, style: theme.textTheme.bodySmall),
+                  if (notification.actorName != null ||
+                      notification.createdAt.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Row(
+                        children: [
+                          if (notification.actorName != null) ...[
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                'by ${notification.actorName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ] else
+                            const Spacer(),
+                          Text(
+                            _timeLabel(notification.createdAt),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -346,7 +530,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _notificationCard(LogisticsRepository logistics, Map<String, dynamic> notification) {    final theme = Theme.of(context);
+  Widget _notificationCard(
+    LogisticsRepository logistics,
+    Map<String, dynamic> notification,
+  ) {
+    final theme = Theme.of(context);
     final unread = notification['readAt'] == null;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -370,9 +558,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   Text(
                     notification['title'] as String? ?? '',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
-                  Text(notification['body'] as String? ?? '', style: theme.textTheme.bodySmall),
+                  Text(
+                    notification['body'] as String? ?? '',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      _timeLabel(notification['createdAt'] as String? ?? ''),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -381,6 +586,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
   }
+
+  String _timeLabel(String value) {
+    final parsed = DateTime.tryParse(value)?.toLocal();
+    if (parsed == null) return '';
+    final hh = parsed.hour.toString().padLeft(2, '0');
+    final mm = parsed.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+}
+
+const _months = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// One row in the merged history: either an app alert or a delivery update.
+class _InboxEntry {
+  _InboxEntry.app(this.alert, this.at) : delivery = null;
+  _InboxEntry.delivery(this.delivery, this.at) : alert = null;
+
+  final AppNotification? alert;
+  final Map<String, dynamic>? delivery;
+  final DateTime? at;
 }
 
 class _CountChip extends StatelessWidget {
