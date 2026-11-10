@@ -458,6 +458,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     if (!widget.canChangeStatus) {
       return _bottomBar(
         Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(

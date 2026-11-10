@@ -900,12 +900,14 @@ void main() {
   group('transaction detail', () {
     Future<void> pumpDetail(
       WidgetTester tester,
-      TransactionRepository transactions,
-    ) async {
+      TransactionRepository transactions, {
+      bool canChangeStatus = true,
+    }) async {
       await tester.pumpWidget(MaterialApp(
         home: TransactionDetailScreen(
           transactions: transactions,
           transactionId: 'txn-1',
+          canChangeStatus: canChangeStatus,
         ),
       ));
       await tester.pumpAndSettle();
@@ -1044,6 +1046,62 @@ void main() {
       expect(find.text('Payment: Refunded'), findsOneWidget);
       expect(find.text('Order: Confirmed'), findsNothing);
       expect(find.text('Completion: Completed'), findsNothing);
+    });
+
+    testWidgets('a staff member sees the sale above a compact note bar',
+        (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/transactions/txn-1')) {
+          return json({
+            'transaction': {
+              ...transactionJson(),
+              'items': [
+                {
+                  'id': 'item-1',
+                  'transactionId': 'txn-1',
+                  'productId': 'product-1',
+                  'name': 'Black Shirt',
+                  'quantity': 2,
+                  'unitPriceKobo': 750_000,
+                  'subtotalKobo': 1_500_000,
+                  'imageUrl': null,
+                },
+              ],
+            },
+            'customer': null,
+            'history': [
+              {
+                'id': 'h1',
+                'transactionId': 'txn-1',
+                'statusType': 'order',
+                'oldValue': null,
+                'newValue': 'pending',
+                'note': 'Transaction created',
+                'createdAt': '2026-10-01T09:00:00.000Z',
+              },
+            ],
+          });
+        }
+        return json({'transactions': <Object>[]});
+      });
+
+      await pumpDetail(tester, repos.transactions, canChangeStatus: false);
+
+      // The sale itself renders, and only the note action is offered.
+      expect(find.text('TXN-2026-00001'), findsWidgets);
+      expect(find.text('Black Shirt'), findsOneWidget);
+      expect(find.text('Order set to Pending'), findsOneWidget);
+      expect(find.text('Add a note'), findsOneWidget);
+      expect(find.textContaining('Order: '), findsNothing);
+
+      // The note bar must be a strip at the bottom, never a full-height panel
+      // that hides the transaction behind it.
+      final noteButton = find.widgetWithText(FilledButton, 'Add note');
+      expect(noteButton, findsOneWidget);
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      expect(tester.getRect(noteButton).top, greaterThan(screenHeight / 2));
     });
 
     testWidgets('reports a transaction that cannot be loaded', (tester) async {
