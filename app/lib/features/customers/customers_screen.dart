@@ -111,7 +111,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         icon: Icons.people_outline,
         title: customers.search.isEmpty ? 'No customers yet' : 'No matches',
         message: customers.search.isEmpty
-            ? 'Save the people you sell to so you can attach them to a transaction later.'
+            ? (widget.canEdit
+                ? 'Save the people you sell to so you can attach them to a transaction later.'
+                : 'Customers you register or sell to will appear here.')
             : 'No customer matches "${customers.search}".',
         action: customers.search.isEmpty
             ? null

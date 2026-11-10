@@ -115,7 +115,8 @@ Settings → Staff → Add
   after activation.
 - **The dashboard is not "created."** The staff is linked to the Main and sees the
   Main's existing products (view-only), can add customers, and sees **only the
-  sales they personally recorded**. Nothing empty is provisioned.
+  sales they personally recorded**. Their customer book is private too: they see
+  only customers they registered or served. Nothing empty is provisioned.
 
 ## Sign-in
 
@@ -135,7 +136,7 @@ subset of the owner's.
 | Home dashboard | full business | **own sales + amounts only**, with today / 7 days / month / all-time, top products and the delivery desk |
 | Sales | all sales | **own sales only**; open detail; **add notes only** |
 | Products | add / edit / archive | **view-only** — cannot add or change |
-| Customers | add / edit / delete | **add only** — no edit or delete |
+| Customers | add / edit / delete | **add only** — no edit or delete, and sees **only customers they registered or served** |
 | Logistics / delivery requests | yes | yes (retained — see assumptions) |
 | Wallet & payouts | yes | **hidden** |
 | Business details (name / location) | yes | **hidden** — no storefront button |
@@ -162,14 +163,13 @@ server scopes to the staff member's `created_by_user_id`, and it leads with:
 - **Their money** — a range switch over *Today / 7 days / Month / All time*,
   each with gross sales, collected and outstanding. The server buckets the day in
   the client's timezone (`tz_offset_minutes`).
-- **Quick actions** — New sale, Add customer, Products (read-only) and Import
-  sale (the AI/Chat screenshot flow).
+- **Quick actions** — Products (read-only), Add customer, and the full-width New
+  sale button, which offers manual entry, a screenshot import or AI chat.
 - **Needs attention** — their unpaid sales and deliveries waiting or on the road.
 - **Recent sales** — only the sales they personally recorded.
 - **Top products** — the five products they sell most, by quantity.
 - **Delivery desk** — pending, active and failed deliveries for the business.
-- **Your shop** — the business card and catalog counts; tapping opens the
-  read-only catalog.
+- **Your shop** — the business card and catalog counts; tapping opens Profile.
 
 The owner's wallet, business-wide report, business-details editor and staff
 management never appear on this page.
@@ -258,7 +258,7 @@ their own sales, and editing/cancelling is refused for staff (notes only).
 | Sign-in page | Staff | Everyday login with code + password |
 | Dashboard (staff shell) | Staff | Own sales + amounts; today / 7 days / month / all-time, top products, delivery desk; copyable code; **no** business-details button |
 | Products (staff) | Staff | View-only — no add / edit / archive |
-| Customers (staff) | Staff | Add-only — no edit / delete |
+| Customers (staff) | Staff | Add-only — no edit / delete; only customers they registered or served |
 | Sale detail (staff) | Staff | View + add notes; no edit / cancel |
 
 ## Security rules

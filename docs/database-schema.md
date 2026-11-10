@@ -168,6 +168,15 @@ columns mirroring the organization (including `planned_hours`), and (from
 | `0021_transaction_source_screenshot` | `source` on `transactions` (`manual` \| `screenshot`) |
 | `0022_notification_product` | `product_id` on `notifications` - stock alerts point at the shelf item |
 | `0023_notification_actor` | `actor_user_id` on `notifications` - who caused a sale, status change or restock |
+| `0024_customer_creator` | `created_by_user_id` on `customers` - keeps a staff-registered customer in that staff's own book |
+
+### Staff customer book
+
+`customers.created_by_user_id` records the user who registered the record. A
+staff sees a customer when they registered it or when they have recorded a sale
+for it (`transactions.created_by_user_id`). The same rule scopes the customer
+list, customer detail counts/history, dashboard customer count, and AI customer
+matching, so the owner's wider customer book stays private.
 
 ### Notification audience
 

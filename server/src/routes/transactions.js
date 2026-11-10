@@ -28,6 +28,7 @@ import {
   nairaText,
   safeAddAppNotification,
 } from '../lib/notifications.js';
+import { STAFF_CUSTOMER_VISIBILITY } from './customers.js';
 
 export const transactionRouter = express.Router();
 
@@ -193,11 +194,21 @@ transactionRouter.post('/', async (req, res) => {
   const businessId = req.business.id;
 
   if (body.customer_id) {
-    const customer = await queryOne(
-      'SELECT id FROM customers WHERE id = ? AND business_id = ?',
-      body.customer_id,
-      businessId
-    );
+    const staffId = req.staff ? req.auth.userId : null;
+    const customer = staffId
+      ? await queryOne(
+          `SELECT c.id FROM customers c
+            WHERE c.id = ? AND c.business_id = ? AND ${STAFF_CUSTOMER_VISIBILITY}`,
+          body.customer_id,
+          businessId,
+          staffId,
+          staffId
+        )
+      : await queryOne(
+          'SELECT id FROM customers WHERE id = ? AND business_id = ?',
+          body.customer_id,
+          businessId
+        );
     if (!customer) throw notFound('That customer does not exist.');
   }
 

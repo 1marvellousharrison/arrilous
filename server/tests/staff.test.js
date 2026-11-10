@@ -264,6 +264,131 @@ describe('staff accounts — scoped access', () => {
     assert.equal(edited.status, 403);
   });
 
+  test('a staff only sees the customers they registered or served', async () => {
+    const owner = await createBusinessOwner('Private CRM Store');
+    const staff = await staffSession(owner, 'Private CRM Staff');
+
+    const ownerOnly = (
+      await api('POST', '/customers', {
+        token: owner.token,
+        body: { name: 'Owner Only', phone: '+2348010000022' },
+      })
+    ).body.customer;
+
+    const staffCreated = (
+      await api('POST', '/customers', {
+        token: staff.token,
+        body: { name: 'Staff Walk In', phone: '+2348010000033' },
+      })
+    ).body.customer;
+
+    // A customer the staff registered is theirs even before the first sale.
+    let list = await api('GET', '/customers', { token: staff.token });
+    assert.deepEqual(
+      list.body.customers.map((customer) => customer.id),
+      [staffCreated.id]
+    );
+
+    const ownerSale = await api('POST', '/transactions', {
+      token: owner.token,
+      body: {
+        customer_id: ownerOnly.id,
+        items: [{ name: 'Owner item', unit_price_kobo: 1000, quantity: 1 }],
+      },
+    });
+    assert.equal(ownerSale.status, 201, JSON.stringify(ownerSale.body));
+
+    // A customer the staff has never served cannot be attached to their sale;
+    // the same 404 hides whether the record exists at all.
+    const foreignSale = await api('POST', '/transactions', {
+      token: staff.token,
+      body: {
+        customer_id: ownerOnly.id,
+        items: [{ name: 'Staff item', unit_price_kobo: 2000, quantity: 1 }],
+      },
+    });
+    assert.equal(foreignSale.status, 404, JSON.stringify(foreignSale.body));
+
+    const staffSale = await api('POST', '/transactions', {
+      token: staff.token,
+      body: {
+        customer_id: staffCreated.id,
+        items: [{ name: 'Staff item', unit_price_kobo: 2000, quantity: 1 }],
+      },
+    });
+    assert.equal(staffSale.status, 201, JSON.stringify(staffSale.body));
+
+    // The owner can still sell to the same customer; the staff's view of the
+    // record stays their own sale, never the owner's.
+    const ownerAlsoSold = await api('POST', '/transactions', {
+      token: owner.token,
+      body: {
+        customer_id: staffCreated.id,
+        items: [{ name: 'Owner item', unit_price_kobo: 5000, quantity: 1 }],
+      },
+    });
+    assert.equal(ownerAlsoSold.status, 201, JSON.stringify(ownerAlsoSold.body));
+
+    list = await api('GET', '/customers', { token: staff.token });
+    assert.deepEqual(
+      list.body.customers.map((customer) => customer.id),
+      [staffCreated.id]
+    );
+    assert.equal(list.body.customers[0].transactionCount, 1);
+    assert.equal(list.body.customers[0].totalSpentKobo, 2000);
+
+    const hidden = await api('GET', `/customers/${ownerOnly.id}`, { token: staff.token });
+    assert.equal(hidden.status, 404);
+
+    const own = await api('GET', `/customers/${staffCreated.id}`, { token: staff.token });
+    assert.equal(own.status, 200, JSON.stringify(own.body));
+    assert.equal(own.body.customer.transactionCount, 1);
+    assert.equal(own.body.customer.totalSpentKobo, 2000);
+    assert.equal(own.body.transactions.length, 1);
+
+    // The owner's book and figures are unchanged.
+    const ownerList = await api('GET', '/customers', { token: owner.token });
+    assert.equal(ownerList.body.customers.length, 2);
+    const ownerView = await api('GET', `/customers/${staffCreated.id}`, {
+      token: owner.token,
+    });
+    assert.equal(ownerView.body.customer.transactionCount, 2);
+    assert.equal(ownerView.body.customer.totalSpentKobo, 7000);
+
+    // The staff's shop card counts only the customers in their own book.
+    const staffDash = await api('GET', '/dashboard/summary', { token: staff.token });
+    assert.equal(staffDash.body.catalog.customers, 1);
+    const ownerDash = await api('GET', '/dashboard/summary', { token: owner.token });
+    assert.equal(ownerDash.body.catalog.customers, 2);
+  });
+
+  test('AI customer matching stays inside the staff customer book', async () => {
+    const owner = await createBusinessOwner('AI CRM Store');
+    const staff = await staffSession(owner, 'AI CRM Staff');
+
+    const ownerCustomer = (
+      await api('POST', '/customers', {
+        token: owner.token,
+        body: { name: 'Owner Match', phone: '+2348010000044' },
+      })
+    ).body.customer;
+
+    const staffMatch = await api(
+      'GET',
+      '/ai/customers/match?phone=%2B2348010000044',
+      { token: staff.token }
+    );
+    assert.equal(staffMatch.status, 200, JSON.stringify(staffMatch.body));
+    assert.equal(staffMatch.body.customer, null);
+
+    const ownerMatch = await api(
+      'GET',
+      '/ai/customers/match?phone=%2B2348010000044',
+      { token: owner.token }
+    );
+    assert.equal(ownerMatch.body.customer.id, ownerCustomer.id);
+  });
+
   test('a staff can read the business but cannot change it or manage staff', async () => {
     const owner = await createBusinessOwner('Hidden Store');
     const staff = await staffSession(owner, 'Hidden Staff');

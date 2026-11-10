@@ -272,6 +272,15 @@ low-stock alert, so the warning disappears as soon as the shelf is healthy.
 Body: `name` (required), `phone`, `email`, `address`, `notes`. A customer record
 is **not** an account — it has no password, role or session.
 
+**A staff has a private customer book.** `GET /customers` and `GET /customers/:id`
+return only the customers that staff registered (`created_by_user_id`) or served
+(they recorded at least one sale for that customer). The same rule scopes the
+`transactionCount`/`totalSpentKobo` figures and the transaction list on the
+detail route, so a staff never sees the owner's customer history. Reaching for
+someone else's customer returns `404`, not `403`. A staff may still create a
+customer, and may attach only a customer inside their own book to a sale; the
+owner continues to see the whole book.
+
 ### Phase 5-6 — transactions
 
 | Method | Route | Notes |
@@ -405,7 +414,8 @@ A staff member calling `/summary` is scoped to the sales they recorded
 
 ```jsonc
 {
-  // ...the same totals/counts/catalog/recent as the owner, but staff-scoped...
+  // ...the same totals/counts/recent as the owner, but staff-scoped...
+  // catalog.customers counts only the staff customer book; activeProducts stays shop-wide.
   "staff": {
     "id": "…", "fullName": "Musa Bello", "phone": null,
     "staffCode": "ABC47-03", "status": "active",
@@ -685,6 +695,11 @@ person's draft returns `404`, not `403`, so the draft's existence is not leaked.
 The owner is business-wide and still sees every staff member's drafts. This is
 why each staff member has their own AI/Chats tab: a draft is working material,
 not shared business news.
+
+Customer matching follows the staff customer book too: `/ai/customers/match`,
+the review pre-fill and the customer chosen on an import are restricted to the
+customers that staff registered or served. A staff never matches or links an
+import to the owner's wider customer book.
 
 Screenshots travel as a base64 `imageDataUrl` in the JSON body. The request body
 limit is **12 MB**; a larger upload returns `413 payload_too_large` with a

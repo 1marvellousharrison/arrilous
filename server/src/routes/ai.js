@@ -12,6 +12,7 @@ import {
   safeAddAppNotification,
 } from '../lib/notifications.js';
 import { config } from '../config.js';
+import { STAFF_CUSTOMER_VISIBILITY } from './customers.js';
 
 export const aiRouter = express.Router();
 aiRouter.use(requireAuth, requireBusiness);
@@ -644,13 +645,28 @@ function namesMatch(a, b) {
 /**
  * Finds a customer the owner already saved. Phone wins over name because a
  * number is unique in practice while two customers can share a name.
+ *
+ * When a staff is importing, the search stays inside the customers that staff
+ * registered or served, so an import cannot surface the owner's wider book.
  */
-export async function findExistingCustomer(businessId, { name, phone } = {}) {
+export async function findExistingCustomer(
+  businessId,
+  { name, phone, staffUserId = null } = {}
+) {
   const phoneKey = normalizePhone(phone);
-  const rows = await queryAll(
-    'SELECT id, name, phone, address FROM customers WHERE business_id = ?',
-    businessId
-  );
+  const rows = staffUserId
+    ? await queryAll(
+        `SELECT c.id, c.name, c.phone, c.address
+           FROM customers c
+          WHERE c.business_id = ? AND ${STAFF_CUSTOMER_VISIBILITY}`,
+        businessId,
+        staffUserId,
+        staffUserId
+      )
+    : await queryAll(
+        'SELECT id, name, phone, address FROM customers WHERE business_id = ?',
+        businessId
+      );
 
   if (phoneKey) {
     const byPhone = rows.find((row) => normalizePhone(row.phone) === phoneKey);
@@ -668,13 +684,14 @@ export async function findExistingCustomer(businessId, { name, phone } = {}) {
  * screenshot did not show. Only blank fields are filled, so an import can
  * never overwrite details the owner already typed.
  */
-async function resolveCustomer(businessId, { name, phone, address }) {
+async function resolveCustomer(businessId, { name, phone, address, staffUserId = null }) {
   const cleanName = (name ?? '').trim();
   const cleanPhone = (phone ?? '').trim();
   const cleanAddress = (address ?? '').trim();
   const { customer, matchedBy } = await findExistingCustomer(businessId, {
     name: cleanName,
     phone: cleanPhone,
+    staffUserId,
   });
 
   if (customer) {
@@ -705,12 +722,15 @@ async function resolveCustomer(businessId, { name, phone, address }) {
   const fallback = cleanPhone || 'Walk-in customer';
   const finalName = (cleanName.length >= 2 ? cleanName : fallback).slice(0, 160);
   await run(
-    'INSERT INTO customers (id, business_id, name, phone, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    `INSERT INTO customers
+       (id, business_id, name, phone, address, created_by_user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     businessId,
     finalName,
     storedPhone,
     cleanAddress || null,
+    staffUserId,
     now(),
     now()
   );
@@ -765,9 +785,12 @@ aiRouter.get('/imports/:id', async (req, res) => {
   if (!imp) throw notFound('Import not found');
 
   // The review screen uses this to pre-fill details the owner already saved.
+  // A staff only matches against the customers they registered or served.
+  const staffUserId = req.staff ? req.staff.user_id : null;
   const { customer, matchedBy } = await findExistingCustomer(req.business.id, {
     name: imp.extracted_customer_name,
     phone: imp.extracted_customer_phone,
+    staffUserId,
   });
 
   res.json({
@@ -783,7 +806,11 @@ aiRouter.get('/customers/match', async (req, res) => {
   if (!name.trim() && !phone.trim()) {
     return res.json({ customer: null, matchedBy: null });
   }
-  const { customer, matchedBy } = await findExistingCustomer(req.business.id, { name, phone });
+  const { customer, matchedBy } = await findExistingCustomer(req.business.id, {
+    name,
+    phone,
+    staffUserId: req.staff ? req.staff.user_id : null,
+  });
   res.json({ customer: publicCustomerLite(customer), matchedBy });
 });
 
@@ -843,11 +870,21 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
   // when the name or phone matches, and created only when nothing matches.
   let customer;
   if (customer_id) {
-    const row = await queryOne(
-      'SELECT id, name, phone, address FROM customers WHERE id = ? AND business_id = ?',
-      customer_id,
-      businessId
-    );
+    const staffId = req.staff ? req.staff.user_id : null;
+    const row = staffId
+      ? await queryOne(
+          `SELECT c.id, c.name, c.phone, c.address FROM customers c
+            WHERE c.id = ? AND c.business_id = ? AND ${STAFF_CUSTOMER_VISIBILITY}`,
+          customer_id,
+          businessId,
+          staffId,
+          staffId
+        )
+      : await queryOne(
+          'SELECT id, name, phone, address FROM customers WHERE id = ? AND business_id = ?',
+          customer_id,
+          businessId
+        );
     if (!row) throw notFound('That customer does not exist.');
     customer = { ...row, matchedBy: 'id' };
   } else {
@@ -855,6 +892,7 @@ aiRouter.post('/imports/:id/complete', async (req, res) => {
       name: customer_name,
       phone: phoneE164,
       address: delivery_required ? delivery_address : null,
+      staffUserId: req.staff ? req.staff.user_id : null,
     });
   }
 

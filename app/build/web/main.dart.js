@@ -55830,16 +55830,17 @@ s.N$=$.a_()
 s.H$=0
 this.an()},
 A(a){return new A.fs(new A.aBR(this),null,this.a.c,null)},
-am0(a){var s,r,q,p=null,o=this.a.c
-if(o.d&&!o.e)return B.cy
-s=o.f
-if(s!=null&&o.c.length===0)return A.cU(A.a([new A.ec(s,o.ge7(),p)],t.p),B.z,p,p,B.F,!1)
-s=o.c.length
-if(s===0){s=o.r
+am0(a){var s,r,q,p=null,o=this.a,n=o.c
+if(n.d&&!n.e)return B.cy
+s=n.f
+if(s!=null&&n.c.length===0)return A.cU(A.a([new A.ec(s,n.ge7(),p)],t.p),B.z,p,p,B.F,!1)
+s=n.c.length
+if(s===0){s=n.r
 r=s.length===0
 q=r?"No customers yet":"No matches"
-s=r?"Save the people you sell to so you can attach them to a transaction later.":'No customer matches "'+s+'".'
-return new A.d_(B.nN,q,s,r?p:A.h4(B.GJ,new A.aBJ(this,o)),p)}return A.hJ(A.Tg(new A.aBK(this,o),s,B.tj,B.F,new A.aBL()),o.ge7())},
+if(r)o=o.d?"Save the people you sell to so you can attach them to a transaction later.":"Customers you register or sell to will appear here."
+else o='No customer matches "'+s+'".'
+return new A.d_(B.nN,q,o,r?p:A.h4(B.GJ,new A.aBJ(this,n)),p)}return A.hJ(A.Tg(new A.aBK(this,n),s,B.tj,B.F,new A.aBL()),n.ge7())},
 awe(a){var s=this.e
 if(s!=null)s.aZ()
 this.e=A.ct(B.jV,new A.aBM(this,a))},

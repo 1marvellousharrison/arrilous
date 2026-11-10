@@ -28,7 +28,7 @@ Build order: [`phase_build_prompt.md`](phase_build_prompt.md)
 | 13 | Security / tenant isolation | Done — ownership resolved from the token, cross-tenant tests in every suite |
 | 14 | Future integration architecture | Done — inert `services/` boundaries: WhatsApp, Payment, Logistics, Notification |
 | 15 | Business rules & validation | Done — Zod schemas, transition table, cross-axis rules, ownership checks |
-| 16 | Testing | Done - 315 server tests, 231 Flutter tests (see below) |
+| 16 | Testing | Done - 317 server tests, 232 Flutter tests (see below) |
 | 17 | Development seed data | Done — `npm run seed` builds the ABC Fashion Store scenarios + a logistics network |
 | 18 | Documentation | Done — architecture, schema, API, environment, integrations |
 | — | **Integrated spec v3 (logistics)** | Done — org/rider accounts, availability, fleet, pricing, matching, delivery lifecycle, business/partner/rider dashboards, in-app notifications |

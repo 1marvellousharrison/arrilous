@@ -4,6 +4,7 @@ import { queryAll, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireBusinessOwner, requireBusiness } from '../middleware/business.js';
 import { lowStockSummary } from '../lib/notifications.js';
+import { STAFF_CUSTOMER_VISIBILITY } from './customers.js';
 import { publicTransaction } from './transactions.js';
 
 export const dashboardRouter = express.Router();
@@ -84,9 +85,9 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
   const businessId = req.business.id;
 
   // A staff's home shows their own sales only; the owner sees the whole business.
-  // Catalog and logistics figures stay business-wide — a staff can view the
-  // catalog and still works the delivery desk, so those counts are not theirs to
-  // have hidden.
+  // The catalog and logistics figures stay business-wide — a staff can view the
+  // catalog and still works the delivery desk. The customer count follows the
+  // customer book, so a staff only counts the people they registered or served.
   const staffId = req.staff ? req.auth.userId : null;
   const scopeSql = staffId ? ' AND created_by_user_id = ?' : '';
   const scopeParams = staffId ? [businessId, staffId] : [businessId];
@@ -133,14 +134,18 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
   // Catalog and customer counts for the business card. Counting them here rather
   // than in the app means the card is right even when those lists are paginated
   // or not loaded at all.
+  const customerCount = staffId
+    ? `(SELECT COUNT(*) FROM customers c
+         WHERE c.business_id = ? AND ${STAFF_CUSTOMER_VISIBILITY})`
+    : '(SELECT COUNT(*) FROM customers WHERE business_id = ?)';
   const catalog = await queryOne(
     `SELECT
         (SELECT COUNT(*) FROM products
           WHERE business_id = ? AND active = 1)      AS "activeProducts",
-        (SELECT COUNT(*) FROM customers
-          WHERE business_id = ?)                       AS customers`,
+        ${customerCount}                             AS customers`,
     businessId,
-    businessId
+    businessId,
+    ...(staffId ? [staffId, staffId] : [])
   );
 
   const recent = (await queryAll(
