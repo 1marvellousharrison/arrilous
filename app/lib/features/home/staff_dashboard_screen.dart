@@ -524,15 +524,15 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         Row(
           children: [
             Expanded(
-              child: FilledButton.icon(
-                onPressed: widget.onNewSale,
-                icon: const Icon(Icons.point_of_sale_outlined, size: 18),
+              child: OutlinedButton.icon(
+                onPressed: widget.onOpenProducts,
+                icon: const Icon(Icons.inventory_2_outlined, size: 18),
                 label: const Text(
-                  'New sale',
+                  'Products',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                style: FilledButton.styleFrom(
+                style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                 ),
@@ -557,11 +557,11 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
-        OutlinedButton.icon(
-          onPressed: widget.onOpenProducts,
-          icon: const Icon(Icons.inventory_2_outlined, size: 18),
-          label: const Text('Products'),
-          style: OutlinedButton.styleFrom(
+        FilledButton.icon(
+          onPressed: widget.onNewSale,
+          icon: const Icon(Icons.point_of_sale_outlined, size: 18),
+          label: const Text('New sale'),
+          style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(48),
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           ),
