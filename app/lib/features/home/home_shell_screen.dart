@@ -427,6 +427,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     }
   }
 
+  /// Opens the sales list narrowed to one of the dashboard's "Needs attention"
+  /// groups, so the badge the owner tapped and the rows they land on agree.
+  void _openAttention(String attention) {
+    widget.transactions.setAttention(attention);
+    _onTab(1);
+  }
+
   Widget _tabs() {
     return switch (_index) {
       0 => PwaInstallPrompt(
@@ -452,6 +459,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   onOpenTransaction: _openTransaction,
                   onManualEntry: _manualTransaction,
                   onSeeAllTransactions: () => _onTab(1),
+                  onOpenAttention: _openAttention,
                   onAddProduct: _addProduct,
                   onAddCustomer: _addCustomer,
                   onOpenProducts: _openProducts,

@@ -330,7 +330,7 @@ void main() {
 
     testWidgets('surfaces the owner needs-attention items', (tester) async {
       useTallSurface(tester);
-      var opened = false;
+      String? openedAttention;
       final repos = await signInOwner((request) async {
         if (request.url.path.contains('/dashboard/summary')) {
           return json({
@@ -384,7 +384,8 @@ void main() {
           customers: repos.customers,
           onOpenTransaction: (_) {},
           onManualEntry: () {},
-          onSeeAllTransactions: () => opened = true,
+          onSeeAllTransactions: () {},
+          onOpenAttention: (attention) => openedAttention = attention,
           onAddProduct: () {},
           onAddCustomer: () {},
         ),
@@ -397,9 +398,16 @@ void main() {
       expect(find.text('On the road'), findsOneWidget);
       expect(find.text('Failures'), findsOneWidget);
 
+      // Each row opens the sales list already narrowed to exactly what the
+      // dashboard counted, not the unfiltered archive.
       await tester.tap(find.text('Awaiting payment'));
-      await tester.pumpAndSettle();
-      expect(opened, isTrue, reason: 'the row leads to the sales list');
+      expect(openedAttention, 'awaiting_payment');
+      await tester.tap(find.text('To deliver'));
+      expect(openedAttention, 'to_deliver');
+      await tester.tap(find.text('On the road'));
+      expect(openedAttention, 'on_road');
+      await tester.tap(find.text('Failures'));
+      expect(openedAttention, 'failures');
     });
 
     testWidgets('invites the first sale when nothing has been recorded',
@@ -700,6 +708,41 @@ void main() {
 
       expect(find.text('No matching transactions'), findsOneWidget);
       expect(find.widgetWithText(InputChip, 'Payment: Refunded'), findsOneWidget);
+    });
+
+    testWidgets('opens narrowed to the attention view the dashboard handed over',
+        (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner(
+        (_) async => json({'transactions': <Object>[]}),
+      );
+      await repos.transactions.setAttention('to_deliver');
+
+      await tester.pumpWidget(MaterialApp(
+        home: TransactionsScreen(
+          transactions: repos.transactions,
+          onOpen: (_) {},
+          onCreate: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // The request the server sees carries the named view, so the list is
+      // narrowed before the first page even arrives.
+      final listRequest = log.lastWhere(
+        (request) => request.url.path.endsWith('/transactions'),
+      );
+      expect(listRequest.url.queryParameters['attention'], 'to_deliver');
+      expect(find.widgetWithText(InputChip, 'To deliver'), findsOneWidget);
+
+      // The view behaves like any other filter: it can be removed in place.
+      await tester.tap(find.descendant(
+        of: find.widgetWithText(InputChip, 'To deliver'),
+        matching: find.byIcon(Icons.close),
+      ));
+      await tester.pumpAndSettle();
+      expect(repos.transactions.attention, isNull);
+      expect(find.widgetWithText(InputChip, 'To deliver'), findsNothing);
     });
 
     testWidgets('lists a sale with its money and statuses', (tester) async {

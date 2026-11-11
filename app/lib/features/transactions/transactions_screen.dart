@@ -126,6 +126,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       );
     }
 
+    if (repository.attention != null) {
+      add(
+        attentionLabels[repository.attention] ?? 'Needs attention',
+        () => repository.setAttention(null),
+      );
+    }
     if (repository.orderStatus != null) {
       add(
         'Order: ${prettyStatus(repository.orderStatus!)}',

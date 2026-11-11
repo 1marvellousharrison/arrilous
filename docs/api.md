@@ -305,7 +305,7 @@ owner continues to see the whole book.
 | Method | Route | Notes |
 |---|---|---|
 | `POST` | `/transactions` | 201; numbers the sale `TXN-<year>-<00001>` |
-| `GET` | `/transactions` | `?search=&order_status=&payment_status=&delivery_status=&completion_status=&customer_id=&source=&limit=&offset=` |
+| `GET` | `/transactions` | `?search=&attention=&order_status=&payment_status=&delivery_status=&completion_status=&customer_id=&source=&limit=&offset=` |
 | `GET` | `/transactions/:id` | with `items` and the customer |
 
 Body: `items[]` (1-200, each with `product_id` **or** `name` + `unit_price_kobo`,
@@ -431,6 +431,17 @@ recorded that evening. `from > to` is **400**, and an unparseable date is **400*
 Filters are applied in SQL rather than in the client, so `limit`/`offset` page a
 filtered set instead of a page that is filtered afterwards.
 
+`attention` is the named view behind the dashboard's "Needs attention" rows.
+Each value spans more than one status, which a single status filter cannot
+express, and cancelled sales are always left out:
+
+| `attention` | Rows |
+|---|---|
+| `awaiting_payment` | `payment_status` of `unpaid` or `payment_pending` |
+| `to_deliver` | `delivery_status` of `pending`, `accepted` or `picked_up` |
+| `on_road` | `delivery_status = 'in_transit'` |
+| `failures` | `payment_status = 'failed'` or `delivery_status = 'failed'` |
+
 ### Phase 12 — dashboard
 
 | Method | Route | Notes |
@@ -454,42 +465,49 @@ requires the owner.
     "inTransit": 0, "completed": 8, "failed": 0, "cancelled": 1
   },
   "catalog": { "activeProducts": 6, "customers": 3 },
-  "recent": [ /* newest first, at most 8 */ ]
+  "recent": [ /* newest first, at most 8 */ ],
+  "periods": {
+    "today":   { "transactionCount": 3, "grossSalesKobo": 4500000, "collectedKobo": 3000000, "outstandingKobo": 1500000 },
+    "week":    { /* last 7 days, including today */ },
+    "month":   { /* this calendar month */ },
+    "allTime": { /* the whole history in scope */ }
+  }
 }
 ```
+
+`periods` is returned for owners and staff alike: the owner's windows cover the
+whole business, a staff member's cover only the sales they recorded. `today`,
+`week` and `month` are bucketed in the caller's own day: the client sends
+`?tz_offset_minutes=60` (minutes east of UTC), so a sale at 00:30 in Lagos is
+not filed under yesterday. `allTime` stays in the payload for compatibility
+even though the app no longer offers it as a window.
 
 A staff member calling `/summary` is scoped to the sales they recorded
 (`created_by_user_id`), and the response gains three extra keys:
 
 ```jsonc
 {
-  // ...the same totals/counts/recent as the owner, but staff-scoped...
+  // ...the same totals/counts/periods/recent as the owner, but staff-scoped...
   // catalog.customers counts only the staff customer book; activeProducts stays shop-wide.
   "staff": {
     "id": "…", "fullName": "Musa Bello", "phone": null,
     "staffCode": "ABC47-03", "status": "active",
     "activatedAt": "2026-01-02T00:00:00.000Z", "salesCount": 12
   },
-  "periods": {
-    "today":   { "transactionCount": 3, "grossSalesKobo": 4500000, "collectedKobo": 3000000, "outstandingKobo": 1500000 },
-    "week":    { /* last 7 days, including today */ },
-    "month":   { /* this calendar month */ },
-    "allTime": { /* the staff member's whole history */ }
-  },
   "topProducts": [ { "name": "Blue Bag", "quantity": 4, "revenueKobo": 6000000 } ]
 }
 ```
 
-`today`, `week` and `month` are bucketed in the caller's own day: the client
-sends `?tz_offset_minutes=60` (minutes east of UTC), so a sale at 00:30 in Lagos
-is not filed under yesterday. `topProducts` is the five products that staff
-member sold in the greatest quantity, excluding cancelled sales.
+`topProducts` is the five products that staff member sold in the greatest
+quantity, excluding cancelled sales.
 
 Two decisions worth knowing before reading a number:
 
 - **A cancelled transaction is excluded from every money total**, because
   counting it as revenue would overstate what was earned. It still has its own
-  `counts.cancelled`, so nothing disappears silently.
+  `counts.cancelled`, so nothing disappears silently. The four actionable counts
+  (`pendingPayment`, `awaitingDelivery`, `inTransit`, `failed`) also skip
+  cancelled sales, so each "Needs attention" badge matches the list it opens.
 - Counts are conditional aggregates over the whole table, not sums of a page, so
   they stay correct however many transactions exist. `catalog` counts only
   products with `active = 1`.

@@ -416,8 +416,18 @@ function toDateBound(value, endOfDay) {
   return value instanceof Date ? value : new Date(value);
 }
 
+// The owner dashboard's "Needs attention" groups. Some of them span more than
+// one status, so they travel as one named view rather than a status filter.
+export const ATTENTION_VIEWS = [
+  'awaiting_payment',
+  'to_deliver',
+  'on_road',
+  'failures',
+];
+
 export const transactionListQuerySchema = z.object({
   search: z.string().trim().max(160).optional(),
+  attention: z.enum(ATTENTION_VIEWS).optional(),
   order_status: z.enum(ORDER_STATUSES).optional(),
   payment_status: z.enum(PAYMENT_STATUSES).optional(),
   delivery_status: z.enum(DELIVERY_STATUSES).optional(),

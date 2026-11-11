@@ -217,6 +217,11 @@ describe('phase 12 — dashboard summary', () => {
     assert.equal(body.totals.transactionCount, 1);
     assert.equal(body.totals.outstandingKobo, 1_500_000);
     assert.equal(body.counts.cancelled, 1, 'but the cancellation is still visible');
+    assert.equal(
+      body.counts.pendingPayment,
+      1,
+      'the cancelled sale is no longer waiting for payment'
+    );
 
     // The cancelled sale is still a real record an owner can open.
     assert.equal(body.recent.length, 2);
@@ -299,6 +304,65 @@ describe('phase 11 — transaction filters', () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.transactions.length, 1);
     assert.equal(res.body.transactions[0].id, paid.id);
+  });
+
+  test('the attention views narrow the list to the rows they counted', async () => {
+    const owner = await store('Attention Store');
+    const unpaid = await sell(owner, owner.product);
+    const paid = await sell(owner, owner.product);
+    await setStatus(owner, paid.id, { paymentStatus: 'paid' });
+    const shipping = await sell(owner, owner.product, {
+      delivery_required: true,
+      delivery_address: '1 Test Street',
+    });
+    const moving = await sell(owner, owner.product, {
+      delivery_required: true,
+      delivery_address: '2 Test Street',
+    });
+    await walkDelivery(owner, moving.id, 'in_transit');
+    const broken = await sell(owner, owner.product);
+    await setStatus(owner, broken.id, { paymentStatus: 'failed' });
+    const dropped = await sell(owner, owner.product, {
+      delivery_required: true,
+      delivery_address: '3 Test Street',
+    });
+    await setStatus(owner, dropped.id, { orderStatus: 'cancelled' });
+
+    const ids = async (view) => {
+      const res = await api('GET', `/transactions?attention=${view}`, {
+        token: owner.token,
+      });
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      return res.body.transactions.map((transaction) => transaction.id);
+    };
+
+    const awaitingPayment = await ids('awaiting_payment');
+    assert.ok(awaitingPayment.includes(unpaid.id));
+    assert.ok(awaitingPayment.includes(shipping.id));
+    assert.ok(awaitingPayment.includes(moving.id));
+    assert.ok(!awaitingPayment.includes(paid.id), 'paid money is not awaited');
+    assert.ok(!awaitingPayment.includes(broken.id), 'a failed payment is not merely pending');
+    assert.ok(
+      !awaitingPayment.includes(dropped.id),
+      'a cancelled sale is not awaiting payment'
+    );
+
+    const toDeliver = await ids('to_deliver');
+    assert.deepEqual(new Set(toDeliver), new Set([shipping.id]));
+
+    const onRoad = await ids('on_road');
+    assert.deepEqual(new Set(onRoad), new Set([moving.id]));
+
+    const failures = await ids('failures');
+    assert.deepEqual(new Set(failures), new Set([broken.id]));
+
+    // The badge and the list agree by construction, which is the point of the
+    // named views: an owner tapping a count lands on exactly that many rows.
+    const body = await summary(owner);
+    assert.equal(body.counts.pendingPayment, awaitingPayment.length);
+    assert.equal(body.counts.awaitingDelivery, toDeliver.length);
+    assert.equal(body.counts.inTransit, onRoad.length);
+    assert.equal(body.counts.failed, failures.length);
   });
 
   test('filters by source', async () => {

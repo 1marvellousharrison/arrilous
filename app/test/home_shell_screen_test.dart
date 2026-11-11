@@ -167,8 +167,13 @@ void main() {
       };
 
   /// Signs the owner in and pumps the shell, whose `initState` re-reads the
-  /// business exactly the way a refresh does.
-  Future<void> pumpShell(WidgetTester tester, {required Map<String, Object?> profile}) async {
+  /// business exactly the way a refresh does. A test that needs real dashboard
+  /// figures can hand them over as [summary].
+  Future<void> pumpShell(
+    WidgetTester tester, {
+    required Map<String, Object?> profile,
+    Map<String, Object?>? summary,
+  }) async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/auth/login')) return json(sessionBody);
       if (request.url.path.endsWith('/business/edit-otp')) {
@@ -178,6 +183,9 @@ void main() {
         return json({'edit_token': 'edit-token-1'});
       }
       if (request.url.path.endsWith('/business')) return json(profile);
+      if (summary != null && request.url.path.endsWith('/dashboard/summary')) {
+        return json(summary);
+      }
       return json(<String, Object>{});
     });
 
@@ -470,6 +478,48 @@ void main() {
     for (var index = 1; index <= 5; index++) {
       expect(find.text('TXN-0000$index'), findsOneWidget, reason: 'the full list carries every request');
     }
+  });
+
+  /// A "Needs attention" count is a promise: tapping it must land on exactly
+  /// the sales it counted, not the unfiltered archive.
+  testWidgets('a needs-attention row opens the sales list already narrowed', (tester) async {
+    useTallSurface(tester);
+    await pumpShell(
+      tester,
+      profile: businessProfile(phone: '+2348012345678', area: 'Allen Hill'),
+      summary: {
+        'totals': {
+          'transactionCount': 5,
+          'grossSalesKobo': 5_000_000,
+          'collectedKobo': 0,
+          'outstandingKobo': 5_000_000,
+        },
+        'counts': {
+          'pendingOrder': 1,
+          'pendingPayment': 2,
+          'awaitingDelivery': 1,
+          'inTransit': 1,
+          'completed': 0,
+          'failed': 0,
+          'cancelled': 0,
+        },
+        'recent': <Object>[],
+      },
+    );
+
+    expect(find.text('Needs attention'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('To deliver'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('To deliver'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Transactions'), findsOneWidget, reason: 'the sales tab is now showing');
+    expect(
+      find.widgetWithText(InputChip, 'To deliver'),
+      findsOneWidget,
+      reason: 'the list carries the view the dashboard handed over',
+    );
   });
 
   /// The app bar leads each owner tab with the most-reached-for action: the

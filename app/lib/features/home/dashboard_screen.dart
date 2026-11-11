@@ -31,6 +31,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onAddCustomer,
     this.onGoToAiChat,
     this.onOpenProducts,
+    this.onOpenAttention,
     super.key,
     this.canAddProduct = true,
   });
@@ -50,6 +51,11 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onAddCustomer;
   final VoidCallback? onGoToAiChat;
   final VoidCallback? onOpenProducts;
+
+  /// Opens the transactions list narrowed to one of the "Needs attention"
+  /// groups, named the way the API names it. Falls back to the whole list when
+  /// the host supplies nothing.
+  final ValueChanged<String>? onOpenAttention;
 
   /// A staff member can add customers but not products, so the quick action is
   /// hidden rather than offered and refused.
@@ -586,6 +592,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'Awaiting payment',
           summary.pendingPayment,
           AppColors.danger,
+          'awaiting_payment',
         ),
       if (summary.awaitingDelivery > 0)
         _attentionRow(
@@ -593,6 +600,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'To deliver',
           summary.awaitingDelivery,
           AppColors.warning,
+          'to_deliver',
         ),
       if (summary.inTransit > 0)
         _attentionRow(
@@ -600,6 +608,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'On the road',
           summary.inTransit,
           AppColors.info,
+          'on_road',
         ),
       if (summary.failed > 0)
         _attentionRow(
@@ -607,6 +616,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'Failures',
           summary.failed,
           AppColors.danger,
+          'failures',
         ),
     ];
 
@@ -628,6 +638,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String label,
     int count,
     Color color,
+    String attention,
   ) {
     return ListTile(
       dense: true,
@@ -655,7 +666,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const Icon(Icons.chevron_right, size: 18),
         ],
       ),
-      onTap: widget.onSeeAllTransactions,
+      onTap: () {
+        final open = widget.onOpenAttention;
+        if (open != null) {
+          open(attention);
+        } else {
+          widget.onSeeAllTransactions();
+        }
+      },
     );
   }
 

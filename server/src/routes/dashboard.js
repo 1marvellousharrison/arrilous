@@ -123,21 +123,31 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
   const periods = await periodsFor(businessId, staffId, allTime, tzOffsetMinutes);
 
   // One pass over the whole table for every state the dashboard reports.
+  //
+  // The four "needs attention" counts skip cancelled sales: a cancelled sale is
+  // not waiting for payment and does not need delivering, and the list these
+  // counts open is narrowed the same way. Otherwise the badge and the list it
+  // leads to would disagree.
   const counts = await queryOne(
     `SELECT
         COALESCE(SUM(CASE WHEN order_status = 'pending' THEN 1 ELSE 0 END), 0)
           AS "pendingOrder",
-        COALESCE(SUM(CASE WHEN payment_status IN ('unpaid', 'payment_pending')
+        COALESCE(SUM(CASE WHEN order_status <> 'cancelled'
+                            AND payment_status IN ('unpaid', 'payment_pending')
                           THEN 1 ELSE 0 END), 0)
           AS "pendingPayment",
-        COALESCE(SUM(CASE WHEN delivery_status IN ('pending', 'accepted', 'picked_up')
+        COALESCE(SUM(CASE WHEN order_status <> 'cancelled'
+                            AND delivery_status IN ('pending', 'accepted', 'picked_up')
                           THEN 1 ELSE 0 END), 0)
           AS "awaitingDelivery",
-        COALESCE(SUM(CASE WHEN delivery_status = 'in_transit' THEN 1 ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN order_status <> 'cancelled'
+                            AND delivery_status = 'in_transit'
+                          THEN 1 ELSE 0 END), 0)
           AS "inTransit",
         COALESCE(SUM(CASE WHEN completion_status = 'completed' THEN 1 ELSE 0 END), 0)
           AS completed,
-        COALESCE(SUM(CASE WHEN payment_status = 'failed' OR delivery_status = 'failed'
+        COALESCE(SUM(CASE WHEN order_status <> 'cancelled'
+                            AND (payment_status = 'failed' OR delivery_status = 'failed')
                           THEN 1 ELSE 0 END), 0)
           AS failed,
         COALESCE(SUM(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END), 0)

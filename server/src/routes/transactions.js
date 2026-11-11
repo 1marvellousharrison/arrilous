@@ -388,6 +388,21 @@ transactionRouter.get('/', async (req, res) => {
       params.push(query[key]);
     }
   }
+  // The owner dashboard's "Needs attention" rows open this list already
+  // narrowed to exactly the sales they counted. A cancelled sale is left out
+  // for the same reason the dashboard leaves it out of these counts: it did not
+  // happen. `attention` is a named group because some groups span several
+  // statuses, which one status filter cannot express.
+  const attentionWhere = {
+    awaiting_payment: "payment_status IN ('unpaid', 'payment_pending')",
+    to_deliver: "delivery_status IN ('pending', 'accepted', 'picked_up')",
+    on_road: "delivery_status = 'in_transit'",
+    failures: "(payment_status = 'failed' OR delivery_status = 'failed')",
+  };
+  if (query.attention) {
+    where.push(`order_status <> 'cancelled'`);
+    where.push(attentionWhere[query.attention]);
+  }
   if (query.search) {
     where.push('(transaction_number ILIKE ? OR COALESCE(notes, \'\') ILIKE ?)');
     const like = `%${query.search}%`;

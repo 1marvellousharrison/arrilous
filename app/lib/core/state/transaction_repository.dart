@@ -32,6 +32,16 @@ const Map<String, TransactionAxis> _axisByWire = {
 
 TransactionAxis? axisForWire(String wire) => _axisByWire[wire];
 
+/// The dashboard's "Needs attention" groups, as the API names them, with the
+/// wording the chips use. Some groups span several statuses, so they travel as
+/// one named view rather than a status filter.
+const Map<String, String> attentionLabels = {
+  'awaiting_payment': 'Awaiting payment',
+  'to_deliver': 'To deliver',
+  'on_road': 'On the road',
+  'failures': 'Failures',
+};
+
 /// The set of values an axis currently allows, and the ones reachable next.
 ///
 /// This mirrors `server/src/lib/statuses.js`. The server is still the authority
@@ -399,6 +409,7 @@ class TransactionRepository extends ChangeNotifier {
   String? _completionStatus;
   String? _source;
   String? _customerId;
+  String? _attention;
   DateTime? _from;
   DateTime? _to;
   int _limit = 25;
@@ -420,6 +431,10 @@ class TransactionRepository extends ChangeNotifier {
   String? get completionStatus => _completionStatus;
   String? get source => _source;
   String? get customerId => _customerId;
+
+  /// The named dashboard view narrowing the list, if the owner arrived here by
+  /// tapping a "Needs attention" row.
+  String? get attention => _attention;
   DateTime? get from => _from;
   DateTime? get to => _to;
   int get offset => _offset;
@@ -438,6 +453,7 @@ class TransactionRepository extends ChangeNotifier {
       _completionStatus != null ||
       _source != null ||
       _customerId != null ||
+      _attention != null ||
       _from != null ||
       _to != null;
 
@@ -449,6 +465,7 @@ class TransactionRepository extends ChangeNotifier {
     _completionStatus,
     _source,
     _customerId,
+    _attention,
     _from,
     _to,
   ].where((value) => value != null).length;
@@ -460,6 +477,7 @@ class TransactionRepository extends ChangeNotifier {
 
     final params = <String, String>{
       if (_search.isNotEmpty) 'search': _search,
+      'attention': ?_attention,
       'order_status': ?_orderStatus,
       'payment_status': ?_paymentStatus,
       'delivery_status': ?_deliveryStatus,
@@ -506,6 +524,9 @@ class TransactionRepository extends ChangeNotifier {
   }
 
   Future<void> setFilter({String? field, String? value}) async {
+    // An explicit status filter takes over from a dashboard view; otherwise the
+    // two narrowings would silently stack and produce a list neither describes.
+    _attention = null;
     switch (field) {
       case 'order':
         _orderStatus = value;
@@ -531,6 +552,14 @@ class TransactionRepository extends ChangeNotifier {
     await _reloadFromStart();
   }
 
+  /// Narrows the list to one of the dashboard's "Needs attention" groups. The
+  /// dashboard badge and this list then agree by construction.
+  Future<void> setAttention(String? value) async {
+    if (_attention == value) return;
+    _attention = value;
+    await _reloadFromStart();
+  }
+
   Future<void> clearFilters() async {
     _search = '';
     _orderStatus = null;
@@ -539,6 +568,7 @@ class TransactionRepository extends ChangeNotifier {
     _completionStatus = null;
     _source = null;
     _customerId = null;
+    _attention = null;
     _from = null;
     _to = null;
     await _reloadFromStart();
