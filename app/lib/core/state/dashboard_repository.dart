@@ -138,14 +138,30 @@ class SalesPeriodTotals {
   final int outstandingKobo;
 }
 
-/// Today / last seven days / this month / all time, computed server-side in the
-/// staff member's own timezone.
+/// One earlier month on the owner's period menu. [key] is `YYYY-MM` in the
+/// caller's own calendar; the totals sit alongside it in the same JSON object.
+class SalesMonthPeriod {
+  const SalesMonthPeriod({required this.key, required this.totals});
+
+  factory SalesMonthPeriod.fromJson(Map<String, dynamic> json) =>
+      SalesMonthPeriod(
+        key: json['key'] as String? ?? '',
+        totals: SalesPeriodTotals.fromJson(json),
+      );
+
+  final String key;
+  final SalesPeriodTotals totals;
+}
+
+/// Today / last seven days / this month / all time / earlier months, computed
+/// server-side in the caller's own timezone.
 class SalesPeriods {
   const SalesPeriods({
     required this.today,
     required this.week,
     required this.month,
     required this.allTime,
+    this.months = const [],
   });
 
   factory SalesPeriods.fromJson(Map<String, dynamic> json) {
@@ -161,6 +177,10 @@ class SalesPeriods {
       week: read('week'),
       month: read('month'),
       allTime: read('allTime'),
+      months: ((json['months'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(SalesMonthPeriod.fromJson)
+          .toList(growable: false),
     );
   }
 
@@ -168,6 +188,10 @@ class SalesPeriods {
   final SalesPeriodTotals week;
   final SalesPeriodTotals month;
   final SalesPeriodTotals allTime;
+
+  /// Earlier months with live sales, newest first. The current month is not
+  /// repeated here; it is [month].
+  final List<SalesMonthPeriod> months;
 }
 
 /// One product a staff member sells most often.

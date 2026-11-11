@@ -290,6 +290,9 @@ void main() {
               'today': period(12),
               'week': period(5),
               'month': period(8),
+              'months': [
+                {'key': '2026-09', ...period(3)},
+              ],
             },
             'recent': <Object>[],
           });
@@ -314,18 +317,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('across 12 transactions'), findsOneWidget);
-      expect(find.text('Today'), findsWidgets);
-      expect(find.text('All'), findsNothing, reason: 'all-time was removed from the switch');
+      expect(find.text("Today's sales"), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget, reason: 'the picker wears the current window');
+      expect(find.text('All'), findsNothing, reason: 'all-time is not offered');
 
-      await tester.tap(find.text('7 days'));
+      // The windows live behind the pill beside the title, not across the top
+      // of the card.
+      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('7 days').last);
       await tester.pumpAndSettle();
       expect(find.text('Last 7 days'), findsOneWidget);
       expect(find.text('across 5 transactions'), findsOneWidget);
 
-      await tester.tap(find.text('Month'));
+      await tester.tap(find.byIcon(Icons.expand_more_rounded));
       await tester.pumpAndSettle();
-      expect(find.text('This month'), findsOneWidget);
+      await tester.tap(find.text('This month').last);
+      await tester.pumpAndSettle();
+      expect(find.text('This month'), findsNWidgets(2), reason: 'heading and picker');
       expect(find.text('across 8 transactions'), findsOneWidget);
+
+      // Earlier months with sales are offered by name.
+      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('Earlier months'), findsOneWidget);
+      await tester.tap(find.text('September 2026'));
+      await tester.pumpAndSettle();
+      expect(find.text('September 2026'), findsNWidgets(2));
+      expect(find.text('across 3 transactions'), findsOneWidget);
     });
 
     testWidgets('surfaces the owner needs-attention items', (tester) async {

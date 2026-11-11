@@ -1,6 +1,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { api, createBusinessOwner } from './helpers.js';
+import { run } from '../src/db/index.js';
 
 /**
  * Phase 12 — the dashboard must report what is actually in the database.
@@ -150,6 +151,42 @@ describe('phase 12 — dashboard summary', () => {
     await setStatus(owner, drop.id, { orderStatus: 'cancelled' });
     const after = await summary(owner);
     assert.equal(after.periods.today.grossSalesKobo, 4_500_000);
+  });
+
+  test('offers earlier months on the owner period menu', async () => {
+    const owner = await store('Month Store');
+    const moved = await sell(owner, owner.product);
+    await sell(owner, owner.product);
+
+    // Put one sale in the previous calendar month so the menu has an earlier
+    // month to offer; the API has no way to backdate a sale.
+    const now = new Date();
+    const previous = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15, 12)
+    );
+    await run(
+      'UPDATE transactions SET created_at = ? WHERE id = ?',
+      previous.toISOString(),
+      moved.id
+    );
+
+    const body = await summary(owner);
+    assert.equal(body.periods.today.grossSalesKobo, 1_500_000);
+    assert.equal(body.periods.month.grossSalesKobo, 1_500_000);
+
+    const key = `${previous.getUTCFullYear()}-${String(
+      previous.getUTCMonth() + 1
+    ).padStart(2, '0')}`;
+    assert.equal(body.periods.months.length, 1);
+    const [month] = body.periods.months;
+    assert.equal(month.key, key);
+    assert.equal(month.transactionCount, 1);
+    assert.equal(month.grossSalesKobo, 1_500_000);
+
+    // The menu is not a log of empty months: only months with live sales.
+    const empty = await store('Quiet Months');
+    const quiet = await summary(empty);
+    assert.deepEqual(quiet.periods.months, []);
   });
 
   test('paid money moves from outstanding to collected', async () => {

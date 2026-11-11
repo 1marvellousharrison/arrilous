@@ -24,12 +24,14 @@ export const dashboardRouter = express.Router();
 const NOT_CANCELLED = "business_id = ? AND order_status <> 'cancelled'";
 
 /**
- * The money since a moment in time, scoped to the whole business for its owner
- * or to one staff member's own sales. Cancelled sales are excluded for the same
- * reason as the headline totals: they did not happen.
+ * The money between two moments, scoped to the whole business for its owner or
+ * to one staff member's own sales. Cancelled sales are excluded for the same
+ * reason as the headline totals: they did not happen. An open-ended window is
+ * the common case, so `until` is optional.
  */
-async function totalsSince(businessId, staffId, since) {
+async function totalsBetween(businessId, staffId, since, until = null) {
   const scopeSql = staffId ? ' AND created_by_user_id = ?' : '';
+  const untilSql = until ? ' AND created_at < ?' : '';
   const row = await queryOne(
     `SELECT
         COUNT(*)                        AS "transactionCount",
@@ -40,10 +42,11 @@ async function totalsSince(businessId, staffId, since) {
                           THEN total_kobo ELSE 0 END), 0) AS "outstandingKobo"
        FROM transactions
       WHERE business_id = ?${scopeSql}
-        AND order_status <> 'cancelled' AND created_at >= ?`,
+        AND order_status <> 'cancelled' AND created_at >= ?${untilSql}`,
     businessId,
     ...(staffId ? [staffId] : []),
-    since
+    since,
+    ...(until ? [until] : [])
   );
 
   return {
@@ -54,31 +57,61 @@ async function totalsSince(businessId, staffId, since) {
   };
 }
 
+/** How many earlier months the owner's period menu can offer. */
+const EARLIER_MONTHS = 6;
+
+/** `YYYY-MM` for a local-time millisecond stamp used as wall-clock time. */
+function monthKey(localMs) {
+  const date = new Date(localMs);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 /**
  * The home dashboard's periods, in the caller's own day. A sale at 00:30 in
  * Lagos must count as today even though the server stores UTC, so the client
  * sends its offset and the boundaries are shifted back to UTC here.
+ *
+ * Earlier months are offered one at a time so the owner can jump straight to
+ * any recent month; a month with no live sales is left off the menu.
  */
 async function periodsFor(businessId, staffId, allTime, tzOffsetMinutes) {
   const offsetMs = tzOffsetMinutes * 60_000;
   const localNow = new Date(Date.now() + offsetMs);
+  const year = localNow.getUTCFullYear();
+  const month = localNow.getUTCMonth();
   const todayStartLocal = Date.UTC(
-    localNow.getUTCFullYear(),
-    localNow.getUTCMonth(),
+    year,
+    month,
     localNow.getUTCDate()
   );
-  const monthStartLocal = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), 1);
+  const monthStartLocal = Date.UTC(year, month, 1);
   const asUtc = (localMs) => new Date(localMs - offsetMs).toISOString();
 
+  const months = [];
+  for (let back = 1; back <= EARLIER_MONTHS; back += 1) {
+    const startLocal = Date.UTC(year, month - back, 1);
+    const endLocal = Date.UTC(year, month - back + 1, 1);
+    const totals = await totalsBetween(
+      businessId,
+      staffId,
+      asUtc(startLocal),
+      asUtc(endLocal)
+    );
+    if (totals.transactionCount > 0) {
+      months.push({ key: monthKey(startLocal), ...totals });
+    }
+  }
+
   return {
-    today: await totalsSince(businessId, staffId, asUtc(todayStartLocal)),
-    week: await totalsSince(
+    today: await totalsBetween(businessId, staffId, asUtc(todayStartLocal)),
+    week: await totalsBetween(
       businessId,
       staffId,
       asUtc(todayStartLocal - 6 * 86_400_000)
     ),
-    month: await totalsSince(businessId, staffId, asUtc(monthStartLocal)),
+    month: await totalsBetween(businessId, staffId, asUtc(monthStartLocal)),
     allTime,
+    months,
   };
 }
 

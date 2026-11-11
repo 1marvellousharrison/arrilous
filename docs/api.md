@@ -470,16 +470,21 @@ requires the owner.
     "today":   { "transactionCount": 3, "grossSalesKobo": 4500000, "collectedKobo": 3000000, "outstandingKobo": 1500000 },
     "week":    { /* last 7 days, including today */ },
     "month":   { /* this calendar month */ },
-    "allTime": { /* the whole history in scope */ }
+    "allTime": { /* the whole history in scope */ },
+    "months": [
+      { "key": "2026-09", "transactionCount": 4, "grossSalesKobo": 6000000, "collectedKobo": 6000000, "outstandingKobo": 0 }
+    ]
   }
 }
 ```
 
-`periods` is returned for owners and staff alike: the owner's windows cover the
-whole business, a staff member's cover only the sales they recorded. `today`,
-`week` and `month` are bucketed in the caller's own day: the client sends
-`?tz_offset_minutes=60` (minutes east of UTC), so a sale at 00:30 in Lagos is
-not filed under yesterday. `allTime` stays in the payload for compatibility
+`months` lists up to six earlier months that have live sales, newest first, for
+the owner's period menu. The current month is not repeated there; it is
+`month`. `periods` is returned for owners and staff alike: the owner's windows
+cover the whole business, a staff member's cover only the sales they recorded.
+`today`, `week` and `month` are bucketed in the caller's own day: the client
+sends `?tz_offset_minutes=60` (minutes east of UTC), so a sale at 00:30 in Lagos
+is not filed under yesterday. `allTime` stays in the payload for compatibility
 even though the app no longer offers it as a window.
 
 A staff member calling `/summary` is scoped to the sales they recorded
