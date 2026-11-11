@@ -45,10 +45,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   String? _formError;
   final Map<String, String> _fieldErrors = {};
 
-  late final TextEditingController _discount =
-      TextEditingController(text: '0');
-  late final TextEditingController _deliveryFee =
-      TextEditingController(text: '0');
+  late final TextEditingController _discount = TextEditingController(text: '0');
+  late final TextEditingController _deliveryFee = TextEditingController(
+    text: '0',
+  );
   late final TextEditingController _deliveryAddress = TextEditingController();
   late final TextEditingController _notes = TextEditingController();
 
@@ -63,7 +63,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
   @override
   void dispose() {
-    for (final controller in [_discount, _deliveryFee, _deliveryAddress, _notes]) {
+    for (final controller in [
+      _discount,
+      _deliveryFee,
+      _deliveryAddress,
+      _notes,
+    ]) {
       controller.dispose();
     }
     super.dispose();
@@ -74,9 +79,20 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
   int get _discountKobo => parseNairaToKobo(_discount.text) ?? 0;
 
-  int get _deliveryFeeKobo => parseNairaToKobo(_deliveryFee.text) ?? 0;
+  /// A delivery fee only applies when something physical is in the cart. A
+  /// digital-only sale must not quietly charge for a van that never moves.
+  int get _deliveryFeeKobo =>
+      _hasPhysical ? (parseNairaToKobo(_deliveryFee.text) ?? 0) : 0;
 
   int get _totalKobo => _subtotalKobo + _deliveryFeeKobo - _discountKobo;
+
+  bool get _hasDigital => _items.any((item) => item.isDigital);
+  bool get _hasPhysical => _items.any((item) => !item.isDigital);
+
+  /// Delivery is only offered when at least one line has to be shipped. The
+  /// server applies the same rule, so an all-digital sale stays not_required
+  /// even if the client sends the switch on.
+  bool get _deliveryNeeded => _deliveryRequired && _hasPhysical;
 
   /// Problems the owner can see before spending the owner's or server's time.
   List<String> get _problems {
@@ -91,14 +107,15 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         parseNairaToKobo(_discount.text) == null) {
       problems.add('The discount is not a valid amount.');
     }
-    if (_deliveryFee.text.trim().isNotEmpty &&
+    if (_hasPhysical &&
+        _deliveryFee.text.trim().isNotEmpty &&
         parseNairaToKobo(_deliveryFee.text) == null) {
       problems.add('The delivery fee is not a valid amount.');
     }
     if (_discountKobo > _subtotalKobo && _items.isNotEmpty) {
       problems.add('The discount cannot be more than the items total.');
     }
-    if (_deliveryRequired && _deliveryAddress.text.trim().isEmpty) {
+    if (_deliveryNeeded && _deliveryAddress.text.trim().isEmpty) {
       problems.add('Add the address this order should be delivered to.');
     }
     return problems;
@@ -149,7 +166,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                         Expanded(
                           child: TextFormField(
                             controller: _discount,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
                             decoration: InputDecoration(
                               labelText: 'Discount',
                               prefixText: '₦',
@@ -159,18 +178,22 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                           ),
                         ),
                         const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _deliveryFee,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: InputDecoration(
-                              labelText: 'Delivery fee',
-                              prefixText: '₦',
-                              errorText: _fieldErrors['delivery_fee_kobo'],
+                        if (_hasPhysical || _items.isEmpty)
+                          Expanded(
+                            child: TextFormField(
+                              controller: _deliveryFee,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: InputDecoration(
+                                labelText: 'Delivery fee',
+                                prefixText: '₦',
+                                errorText: _fieldErrors['delivery_fee_kobo'],
+                              ),
+                              onChanged: (_) => setState(() {}),
                             ),
-                            onChanged: (_) => setState(() {}),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.lg),
@@ -184,36 +207,70 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.xl),
-              _sectionLabel('Delivery'),
-              const SizedBox(height: AppSpacing.sm),
-              AppCard(
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Needs delivery'),
-                      subtitle: const Text('Turn this on to track the delivery status'),
-                      value: _deliveryRequired,
-                      onChanged: (value) => setState(() => _deliveryRequired = value),
-                    ),
-                    if (_deliveryRequired) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      TextFormField(
-                        controller: _deliveryAddress,
-                        maxLines: 2,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: InputDecoration(
-                          labelText: 'Delivery address',
-                          hintText: '10 Adeola Odeku St, Victoria Island',
-                          errorText: _fieldErrors['delivery_address'],
+              if (_hasPhysical) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _sectionLabel('Delivery'),
+                const SizedBox(height: AppSpacing.sm),
+                AppCard(
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Needs delivery'),
+                        subtitle: const Text(
+                          'Turn this on to track the delivery status',
                         ),
-                        onChanged: (_) => setState(() {}),
+                        value: _deliveryRequired,
+                        onChanged: (value) =>
+                            setState(() => _deliveryRequired = value),
+                      ),
+                      if (_deliveryRequired) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        TextFormField(
+                          controller: _deliveryAddress,
+                          maxLines: 2,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: InputDecoration(
+                            labelText: 'Delivery address',
+                            hintText: '10 Adeola Odeku St, Victoria Island',
+                            errorText: _fieldErrors['delivery_address'],
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ] else if (_hasDigital) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _sectionLabel('Digital delivery'),
+                const SizedBox(height: AppSpacing.sm),
+                AppCard(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.cloud_download_outlined,
+                        size: 22,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Text(
+                          'The buyer receives these after payment — by email and '
+                          'on a private download page. There is no delivery '
+                          'address or shipping fee for a digital order.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.onSurface
+                                .withValues(alpha: 0.7),
+                          ),
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: AppSpacing.xl),
               _sectionLabel('Notes'),
               const SizedBox(height: AppSpacing.sm),
@@ -235,12 +292,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   }
 
   Widget _sectionLabel(String text) => Text(
-        text,
-        style: Theme.of(context)
-            .textTheme
-            .titleSmall
-            ?.copyWith(fontWeight: FontWeight.w700),
-      );
+    text,
+    style: Theme.of(context).textTheme.titleSmall
+        ?.copyWith(fontWeight: FontWeight.w700),
+  );
 
   Widget _customerPicker() {
     return AppCard(
@@ -257,9 +312,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
             child: Text(
               _customer?.name ?? 'Walk-in customer (no account)',
               style: TextStyle(
-                fontWeight: _customer == null ? FontWeight.w400 : FontWeight.w600,
+                fontWeight: _customer == null
+                    ? FontWeight.w400
+                    : FontWeight.w600,
                 color: _customer == null
-                    ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)
+                    ? Theme.of(context).colorScheme.onSurface
+                          .withValues(alpha: 0.6)
                     : null,
               ),
             ),
@@ -277,16 +335,15 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           child: Text(
             'No products yet. Add one from your catalog, or type a one-off line.',
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.6),
             ),
           ),
         ),
       ];
     }
 
-    return [
-      for (final item in _items) _itemCard(item),
-    ];
+    return [for (final item in _items) _itemCard(item)];
   }
 
   Widget _itemCard(DraftItem item) {
@@ -306,18 +363,21 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                     children: [
                       Text(
                         item.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        item.productId == null
+                        item.isDigital
+                            ? '${formatKobo(item.unitPriceKobo)} each • Digital delivery'
+                            : item.productId == null
                             ? 'One-off line — price is yours to set'
                             : '${formatKobo(item.unitPriceKobo)} each, from your catalog',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
+                          color: Theme.of(context).colorScheme.onSurface
                               .withValues(alpha: 0.6),
                         ),
                       ),
@@ -345,7 +405,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                 const SizedBox(width: AppSpacing.md),
                 Text(
                   formatKobo(item.subtotalKobo),
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
                 ),
               ],
             ),
@@ -365,7 +428,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [Text(label, style: style), Text(value, style: style)],
+        children: [
+          Text(label, style: style),
+          Text(value, style: style),
+        ],
       ),
     );
   }
@@ -381,9 +447,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor),
-        ),
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -405,7 +469,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                 ? const SizedBox(
                     width: 22,
                     height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
                   )
                 : Text(
                     _items.isEmpty
@@ -456,8 +523,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         customerId: _customer?.id,
         discountKobo: _discountKobo,
         deliveryFeeKobo: _deliveryFeeKobo,
-        deliveryRequired: _deliveryRequired,
-        deliveryAddress: _deliveryAddress.text,
+        deliveryRequired: _deliveryNeeded,
+        deliveryAddress: _hasPhysical ? _deliveryAddress.text : null,
         notes: _notes.text,
       );
       if (!mounted) return;
@@ -488,8 +555,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
             (detail) => MapEntry(detail.field, detail.message),
           ),
         );
-      _formError =
-          error.details == null || error.details!.isEmpty ? error.message : null;
+      _formError = error.details == null || error.details!.isEmpty
+          ? error.message
+          : null;
     });
   }
 }
@@ -588,9 +656,7 @@ class _CustomerPickerSheet extends StatelessWidget {
                       Expanded(
                         child: Text(
                           'Who is this for?',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -613,8 +679,7 @@ class _CustomerPickerSheet extends StatelessWidget {
                       ? EmptyState(
                           icon: Icons.person_outline,
                           title: 'No customers yet',
-                          message:
-                              'Add the buyer now and they will be selected for this sale.',
+                          message: 'Add the buyer now and they will be selected for this sale.',
                           action: FilledButton.icon(
                             onPressed: () => _createCustomer(context),
                             icon: const Icon(Icons.person_add_alt, size: 18),
@@ -628,12 +693,16 @@ class _CustomerPickerSheet extends StatelessWidget {
                             final customer = list[index];
                             return ListTile(
                               leading: CircleAvatar(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.15),
                                 child: Text(
                                   customer.initials,
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -713,7 +782,10 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                     ),
                     child: SegmentedButton<bool>(
                       segments: const [
-                        ButtonSegment(value: false, label: Text('From catalog')),
+                        ButtonSegment(
+                          value: false,
+                          label: Text('From catalog'),
+                        ),
                         ButtonSegment(value: true, label: Text('One-off')),
                       ],
                       selected: {_adHoc},
@@ -729,8 +801,7 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                           ? const EmptyState(
                               icon: Icons.inventory_2_outlined,
                               title: 'No active products',
-                              message:
-                                  'Add products to your catalog, or record this sale as a one-off line.',
+                              message: 'Add products to your catalog, or record this sale as a one-off line.',
                             )
                           : ListView.builder(
                               controller: controller,
@@ -745,11 +816,15 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                                   ),
                                   title: Text(product.name),
                                   subtitle: Text(
-                                    product.isOutOfStock
+                                    product.isDigital
+                                        ? '${formatKobo(product.priceKobo)} • Digital · unlimited'
+                                        : product.isOutOfStock
                                         ? 'Out of stock'
                                         : '${formatKobo(product.priceKobo)} • ${product.stockQuantity} in stock',
                                   ),
-                                  trailing: const Icon(Icons.add_circle_outline),
+                                  trailing: const Icon(
+                                    Icons.add_circle_outline,
+                                  ),
                                   // Out-of-stock lines are shown but not
                                   // selectable: the server would refuse them
                                   // anyway, and an owner may still be taking a
@@ -757,13 +832,14 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                                   onTap: product.isOutOfStock
                                       ? null
                                       : () => Navigator.of(context).pop(
-                                            DraftItem(
-                                              name: product.name,
-                                              productId: product.id,
-                                              unitPriceKobo: product.priceKobo,
-                                              quantity: 1,
-                                            ),
+                                          DraftItem(
+                                            name: product.name,
+                                            productId: product.id,
+                                            unitPriceKobo: product.priceKobo,
+                                            quantity: 1,
+                                            isDigital: product.isDigital,
                                           ),
+                                        ),
                                 );
                               },
                             ),
@@ -792,7 +868,8 @@ class _AddItemSheetState extends State<_AddItemSheet> {
               'yours to set. Useful for a single repair or a market-day special.',
               style: TextStyle(
                 fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.7),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -808,11 +885,15 @@ class _AddItemSheetState extends State<_AddItemSheet> {
             const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: _price,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: 'Unit price',
                 prefixText: '₦',
-                errorText: _price.text.trim().isNotEmpty && parseNairaToKobo(_price.text) == null
+                errorText:
+                    _price.text.trim().isNotEmpty &&
+                        parseNairaToKobo(_price.text) == null
                     ? 'Enter an amount like 4500 or 4500.50'
                     : null,
               ),
@@ -829,10 +910,15 @@ class _AddItemSheetState extends State<_AddItemSheet> {
                 const Text('Quantity'),
                 const Spacer(),
                 IconButton(
-                  onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                  onPressed: _quantity > 1
+                      ? () => setState(() => _quantity--)
+                      : null,
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
-                Text('$_quantity', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  '$_quantity',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 IconButton(
                   onPressed: () => setState(() => _quantity++),
                   icon: const Icon(Icons.add_circle_outline),
@@ -843,12 +929,12 @@ class _AddItemSheetState extends State<_AddItemSheet> {
             FilledButton(
               onPressed: valid
                   ? () => Navigator.of(context).pop(
-                        DraftItem(
-                          name: _name.text.trim(),
-                          quantity: _quantity,
-                          unitPriceKobo: priceKobo,
-                        ),
-                      )
+                      DraftItem(
+                        name: _name.text.trim(),
+                        quantity: _quantity,
+                        unitPriceKobo: priceKobo,
+                      ),
+                    )
                   : null,
               child: const Text('Add line'),
             ),

@@ -175,6 +175,50 @@ const imageDataUrlSchema = z
 // data URL — a plain link is refused the same way a stray text file is.
 const logoUrlSchema = imageDataUrlSchema;
 
+// A digital product may point at an external download/access URL. Only http(s)
+// links are accepted: the buyer's browser follows this, so a javascript: or
+// data: scheme would be an injection vector on the public delivery page.
+const optionalHttpUrl = z
+  .string()
+  .trim()
+  .max(2000, 'The link is too long.')
+  .optional()
+  .nullable()
+  .refine(
+    (value) => !value || /^https?:\/\//i.test(value),
+    'Enter a link starting with http:// or https://.'
+  )
+  .transform((value) => (value ? value : null));
+
+// An uploaded digital asset travels in the same JSON as the product. The route
+// decodes the base64 and enforces the decoded size cap before anything is
+// stored; the string bound here only keeps an unbounded body from reaching it.
+export const DIGITAL_FILE_MAX_BYTES = 6 * 1024 * 1024;
+const DIGITAL_FILE_MAX_BASE64 = Math.ceil((DIGITAL_FILE_MAX_BYTES * 4) / 3) + 4;
+
+export const digitalFileSchema = z.object({
+  file_name: z
+    .string({ required_error: 'The file needs a name.' })
+    .trim()
+    .min(1, 'The file needs a name.')
+    .max(200, 'The file name is too long.'),
+  mime_type: z
+    .string()
+    .trim()
+    .min(1)
+    .max(160)
+    .optional()
+    .default('application/octet-stream'),
+  data_base64: z
+    .string({ required_error: 'The file has no content.' })
+    .min(1, 'The file has no content.')
+    .max(DIGITAL_FILE_MAX_BASE64, 'The file is larger than 6 MB.')
+    .regex(
+      /^[A-Za-z0-9+/]+={0,2}$/,
+      'The file content is not valid base64.'
+    ),
+});
+
 // Phase 1 — business profile
 export const businessCreateSchema = z.object({
   business_name: z
@@ -245,6 +289,15 @@ export const productCreateSchema = z.object({
     .optional()
     .default(0),
   image_url: imageDataUrlSchema,
+  // `physical` keeps the shelf behaviour every existing row has. A `digital`
+  // product ignores stock and delivery; the route forces stock to zero and
+  // refuses a restock so the two shapes cannot drift into each other.
+  kind: z.enum(['physical', 'digital']).optional().default('physical'),
+  digital_url: optionalHttpUrl,
+  digital_instructions: optionalText(2000),
+  digital_file: digitalFileSchema.optional().nullable(),
+  // A PATCH must be able to remove an uploaded file without uploading another.
+  clear_digital_file: z.boolean().optional(),
 });
 
 export const productUpdateSchema = productCreateSchema
@@ -331,6 +384,13 @@ export const transactionCreateSchema = z.object({
     .array(transactionItemSchema)
     .min(1, 'Add at least one item to the transaction.')
     .max(200, 'That is too many items for one transaction.'),
+});
+
+// Digital delivery email. The body may carry a different address than the one
+// saved on the customer; when it does not, the route falls back to the
+// transaction's last delivery email and then to the customer's email.
+export const digitalDeliverSchema = z.object({
+  email: emailSchema.optional(),
 });
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

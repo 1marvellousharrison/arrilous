@@ -895,6 +895,86 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('an all-digital cart needs no delivery address or fee',
+        (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner((request) async {
+        if (request.method == 'POST') {
+          return json({'transaction': transactionJson()}, status: 201);
+        }
+        if (request.url.path.endsWith('/transactions/txn-1')) {
+          return json({
+            'transaction': {
+              ...transactionJson(),
+              'items': [
+                {
+                  'id': 'item-1',
+                  'transactionId': 'txn-1',
+                  'productId': 'product-1',
+                  'name': 'E-book',
+                  'quantity': 1,
+                  'unitPriceKobo': 500_000,
+                  'subtotalKobo': 500_000,
+                  'isDigital': true,
+                },
+              ],
+            },
+            'customer': null,
+            'history': <Object>[],
+          });
+        }
+        if (request.url.path.endsWith('/products')) {
+          return json({
+            'products': [
+              {
+                'id': 'product-1',
+                'businessId': 'business-1',
+                'name': 'E-book',
+                'priceKobo': 500_000,
+                'stockQuantity': 0,
+                'active': true,
+                'kind': 'digital',
+                'digitalUrl': 'https://example.com/ebook',
+                'hasDigitalFile': false,
+              },
+            ],
+          });
+        }
+        return json(<String, Object>{});
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: NewTransactionScreen(
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tapText(tester, 'Add product');
+      await tester.pumpAndSettle();
+      // A digital product reads as unlimited rather than as an empty shelf.
+      expect(find.text('₦5,000.00 • Digital · unlimited'), findsOneWidget);
+      await tapText(tester, 'E-book');
+      await tester.pumpAndSettle();
+
+      // No physical line means no delivery switch at all.
+      expect(find.text('Needs delivery'), findsNothing);
+      expect(find.text('Digital delivery'), findsOneWidget);
+
+      await tapText(tester, 'Record sale • ₦5,000.00');
+      await tester.pumpAndSettle();
+
+      final post = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/transactions'),
+      );
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      expect(body['delivery_required'], isFalse);
+      expect(body['delivery_fee_kobo'], 0, reason: 'no van moves for a digital sale');
+      expect(body['delivery_address'], isNull);
+    });
   });
 
   group('transaction detail', () {
@@ -1102,6 +1182,114 @@ void main() {
       final screenHeight =
           tester.view.physicalSize.height / tester.view.devicePixelRatio;
       expect(tester.getRect(noteButton).top, greaterThan(screenHeight / 2));
+    });
+
+    testWidgets('a paid digital sale exposes its link and emails the buyer',
+        (tester) async {
+      useTallSurface(tester);
+      const url = 'https://api.example.com/api/v1/public/sales/token-1';
+      final repos = await signInOwner((request) async {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/transactions/txn-1/deliver')) {
+          return json({
+            'status': 'success',
+            'emailSent': true,
+            'email': 'buyer@example.com',
+            'publicUrl': url,
+            'message': 'Sent to buyer@example.com.',
+          });
+        }
+        if (request.url.path.endsWith('/transactions/txn-1')) {
+          return json({
+            'transaction': {
+              ...transactionJson(paymentStatus: 'paid'),
+              'publicToken': 'token-1',
+              'publicUrl': url,
+              'items': [
+                {
+                  'id': 'item-1',
+                  'transactionId': 'txn-1',
+                  'productId': 'product-1',
+                  'name': 'E-book',
+                  'quantity': 1,
+                  'unitPriceKobo': 500_000,
+                  'subtotalKobo': 500_000,
+                  'isDigital': true,
+                  'digitalUrl': 'https://example.com/ebook',
+                  'digitalInstructions': 'Enjoy the read.',
+                },
+              ],
+            },
+            'customer': {
+              'id': 'c1',
+              'name': 'Ada Nwosu',
+              'phone': '+2348031234567',
+              'email': 'buyer@example.com',
+            },
+            'history': <Object>[],
+          });
+        }
+        return json({'transactions': <Object>[]});
+      });
+
+      await pumpDetail(tester, repos.transactions);
+
+      expect(find.text('Digital delivery'), findsOneWidget);
+      expect(find.text(url), findsOneWidget);
+      expect(find.textContaining('digital download'), findsOneWidget);
+      expect(find.text('Will send to buyer@example.com.'), findsOneWidget);
+
+      await tapText(tester, 'Send by email');
+      expect(find.text('Send the download link'), findsOneWidget);
+
+      // The customer's saved email prefills the dialog, so sending is one tap.
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      final post = log.firstWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.url.path.endsWith('/transactions/txn-1/deliver'),
+      );
+      expect(jsonDecode(post.body)['email'], 'buyer@example.com');
+      expect(find.text('Sent to buyer@example.com.'), findsOneWidget);
+    });
+
+    testWidgets('an unpaid digital sale keeps its page locked', (tester) async {
+      useTallSurface(tester);
+      const url = 'https://api.example.com/api/v1/public/sales/token-1';
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/transactions/txn-1')) {
+          return json({
+            'transaction': {
+              ...transactionJson(),
+              'publicToken': 'token-1',
+              'publicUrl': url,
+              'items': [
+                {
+                  'id': 'item-1',
+                  'transactionId': 'txn-1',
+                  'productId': 'product-1',
+                  'name': 'E-book',
+                  'quantity': 1,
+                  'unitPriceKobo': 500_000,
+                  'subtotalKobo': 500_000,
+                  'isDigital': true,
+                },
+              ],
+            },
+            'customer': null,
+            'history': <Object>[],
+          });
+        }
+        return json({'transactions': <Object>[]});
+      });
+
+      await pumpDetail(tester, repos.transactions);
+
+      expect(find.textContaining('Confirm payment before sending'), findsOneWidget);
+      expect(find.text('Send by email'), findsNothing);
+      expect(find.text(url), findsOneWidget, reason: 'the link is still available to copy');
     });
 
     testWidgets('reports a transaction that cannot be loaded', (tester) async {

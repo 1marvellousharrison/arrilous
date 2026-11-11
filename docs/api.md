@@ -260,6 +260,25 @@ owner never has to remember the previous count. `quantity` must be a whole
 number of at least 1 (422 otherwise). A successful restock re-syncs the
 low-stock alert, so the warning disappears as soon as the shelf is healthy.
 
+#### Digital products
+
+A product is `kind: "physical"` (the default) or `kind: "digital"`. A digital
+listing has unlimited stock — `stock_quantity` is always `0`, `/restock` returns
+**400**, and it never raises a low-stock alert. It sells an access asset:
+
+| Field | Notes |
+|---|---|
+| `digital_url` | optional `http(s)` download/access link |
+| `digital_instructions` | optional text shown to the buyer |
+| `digital_file` | optional upload `{ file_name, mime_type, data_base64 }`, max **6 MB** decoded |
+| `clear_digital_file` | PATCH-only flag that removes the current upload |
+
+A digital product must have a link, a file, or both (422 otherwise). The upload
+is stored in `digital_files` and the product row points at it. Switching a product
+back to `physical` clears its link, instructions and file, pruning the upload once
+no sale snapshot needs it. Products return `kind`, `digitalUrl`,
+`digitalInstructions`, `digitalFileName` and `hasDigitalFile`.
+
 ### Phase 4 — customers
 
 | Method | Route | Notes |
@@ -304,6 +323,36 @@ A line referencing a catalog product takes its **name and price from the
 catalog**; a payload that tries to set `unit_price_kobo` on it is ignored. Items
 store a price snapshot, so a later catalog price change never rewrites history.
 Ad-hoc lines (no `product_id`) keep the caller's own name and price.
+
+A digital line snapshots the product's link, instructions and file id on the sale
+itself, so editing or replacing the product later cannot change what a past buyer
+receives. When **every** line is digital, delivery is forced off: `deliveryRequired`
+is `false`, `deliveryAddress` is `null`, and `deliveryStatus` is `not_required`.
+A mixed cart requires delivery only because of the physical lines.
+
+### Digital delivery
+
+| Method | Route | Notes |
+|---|---|---|
+| `POST` | `/transactions/:id/deliver` | emails a **paid** digital sale; body `{ "email": "buyer@example.com" }` optional |
+
+The deliver route is scoped to the sale exactly like the detail route (owner, or
+staff for a sale they recorded). It refuses an unpaid sale and a sale with no
+digital lines. The response carries `emailSent`, the address used, the buyer's
+`publicUrl` and a message. When no mail provider is configured it is honest:
+`emailSent: false`, plus the link the owner can share instead.
+
+The buyer's page is unauthenticated and tokenised:
+
+| Method | Route | Notes |
+|---|---|---|
+| `GET` | `/public/sales/:token` | HTML sale page; until `paymentStatus = paid` it shows a payment notice and **never leaks the asset** |
+| `GET` | `/public/sales/:token/items/:itemId/file` | streams the uploaded file; **404** unless the token's sale is paid |
+
+A public token is minted only for a sale that contains digital lines, and detail
+responses return it as `publicUrl`. Set `PUBLIC_BASE_URL` (the API base, e.g.
+`https://api.example.com/api/v1`) to control that link; otherwise it is derived
+from the request host.
 
 ### Phase 7 — statuses
 

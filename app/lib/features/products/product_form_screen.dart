@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/services/digital_file_service.dart';
 import '../../core/services/logo_service.dart';
 import '../../core/state/catalog_repository.dart';
 import '../../core/theme/app_theme.dart';
@@ -24,6 +24,7 @@ class ProductFormScreen extends StatefulWidget {
     super.key,
     this.readOnly = false,
     this.logoService,
+    this.digitalFileService,
   });
 
   final CatalogRepository catalog;
@@ -36,6 +37,10 @@ class ProductFormScreen extends StatefulWidget {
   /// image without a real gallery, the same way the setup flow does.
   final LogoService? logoService;
 
+  /// The device picker behind a digital product's file. Tests supply a fake so
+  /// the upload path can be exercised without a real file dialog.
+  final DigitalFileService? digitalFileService;
+
   @override
   State<ProductFormScreen> createState() => _ProductFormScreenState();
 }
@@ -43,18 +48,39 @@ class ProductFormScreen extends StatefulWidget {
 class _ProductFormScreenState extends State<ProductFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController _name = TextEditingController(text: widget.product?.name ?? '');
-  late final TextEditingController _description =
-      TextEditingController(text: widget.product?.description ?? '');
-  late final TextEditingController _category =
-      TextEditingController(text: widget.product?.category ?? '');
-  late final TextEditingController _sku = TextEditingController(text: widget.product?.sku ?? '');
+  late final TextEditingController _name = TextEditingController(
+    text: widget.product?.name ?? '',
+  );
+  late final TextEditingController _description = TextEditingController(
+    text: widget.product?.description ?? '',
+  );
+  late final TextEditingController _category = TextEditingController(
+    text: widget.product?.category ?? '',
+  );
+  late final TextEditingController _sku = TextEditingController(
+    text: widget.product?.sku ?? '',
+  );
   late final TextEditingController _price = TextEditingController(
-    text: widget.product == null ? '' : _koboToNairaText(widget.product!.priceKobo),
+    text: widget.product == null
+        ? ''
+        : _koboToNairaText(widget.product!.priceKobo),
   );
   late final TextEditingController _stock = TextEditingController(
-    text: widget.product == null ? '' : widget.product!.stockQuantity.toString(),
+    text: widget.product == null
+        ? ''
+        : widget.product!.stockQuantity.toString(),
   );
+  late final TextEditingController _digitalUrl = TextEditingController(
+    text: widget.product?.digitalUrl ?? '',
+  );
+  late final TextEditingController _digitalInstructions = TextEditingController(
+    text: widget.product?.digitalInstructions ?? '',
+  );
+
+  /// 'physical' or 'digital'. New products default to a shelf item.
+  late String _kind = widget.product?.isDigital == true
+      ? 'digital'
+      : 'physical';
 
   bool _submitting = false;
   String? _formError;
@@ -66,10 +92,21 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   Uint8List? _imageBytes;
   bool _pickingImage = false;
 
+  /// A file chosen in this session, and whether an existing upload should be
+  /// removed when saving. A new pick always wins over the clear flag.
+  PickedDigitalFile? _pickedFile;
+  bool _clearDigitalFile = false;
+  bool _pickingFile = false;
+
   late final LogoService _imageService =
       widget.logoService ?? const DeviceLogoService();
+  late final DigitalFileService _fileService =
+      widget.digitalFileService ?? const DeviceDigitalFileService();
 
   bool get _isEditing => widget.product != null;
+  bool get _isDigital => _kind == 'digital';
+  bool get _hasExistingFile =>
+      !_clearDigitalFile && (widget.product?.hasDigitalFile ?? false);
 
   @override
   void initState() {
@@ -87,6 +124,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _sku,
       _price,
       _stock,
+      _digitalUrl,
+      _digitalInstructions,
     ]) {
       controller.dispose();
     }
@@ -100,7 +139,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final int major = abs ~/ koboPerNaira;
     final int minor = abs % koboPerNaira;
     final String sign = kobo < 0 ? '-' : '';
-    return minor == 0 ? '$sign$major' : '$sign$major.${minor.toString().padLeft(2, '0')}';
+    return minor == 0
+        ? '$sign$major'
+        : '$sign$major.${minor.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -109,7 +150,13 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final parsed = parseNairaToKobo(_price.text);
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.readOnly ? 'Product' : (_isEditing ? 'Edit product' : 'New product'))),
+      appBar: AppBar(
+        title: Text(
+          widget.readOnly
+              ? 'Product'
+              : (_isEditing ? 'Edit product' : 'New product'),
+        ),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -129,8 +176,28 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   hintText: 'Indomie 50 packs',
                   errorText: _fieldErrors['name'],
                 ),
-                validator: (value) =>
-                    (value == null || value.trim().length < 2) ? 'Enter a product name.' : null,
+                validator: (value) => (value == null || value.trim().length < 2)
+                    ? 'Enter a product name.'
+                    : null,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'physical',
+                    label: Text('Physical'),
+                    icon: Icon(Icons.inventory_2_outlined, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: 'digital',
+                    label: Text('Digital'),
+                    icon: Icon(Icons.cloud_download_outlined, size: 18),
+                  ),
+                ],
+                selected: {_kind},
+                onSelectionChanged: widget.readOnly
+                    ? null
+                    : (selection) => setState(() => _kind = selection.first),
               ),
               const SizedBox(height: AppSpacing.lg),
               Row(
@@ -150,7 +217,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         Text(
                           'This shows on the product slide. You can leave it blank.',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.6,
+                            ),
                           ),
                         ),
                       ],
@@ -201,7 +270,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               TextFormField(
                 controller: _price,
                 enabled: !widget.readOnly,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                 ],
@@ -216,7 +287,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       : 'Stored as ${formatKobo(parsed)}',
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) return 'Enter a price.';
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Enter a price.';
+                  }
                   if (parseNairaToKobo(value) == null) {
                     return 'Use at most two decimal places.';
                   }
@@ -224,27 +297,32 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 },
               ),
               const SizedBox(height: AppSpacing.lg),
-              TextFormField(
-                controller: _stock,
-                enabled: !widget.readOnly,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(
-                  labelText: 'Stock quantity',
-                  hintText: '0',
-                  errorText: _fieldErrors['stock_quantity'],
-                  helperText: _isEditing
-                      ? 'Adding new stock? Use + on the product list instead of editing this number.'
-                      : null,
+              if (_isDigital)
+                ..._digitalFields(theme)
+              else
+                TextFormField(
+                  controller: _stock,
+                  enabled: !widget.readOnly,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(
+                    labelText: 'Stock quantity',
+                    hintText: '0',
+                    errorText: _fieldErrors['stock_quantity'],
+                    helperText: _isEditing
+                        ? 'Adding new stock? Use + on the product list instead of editing this number.'
+                        : null,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Enter a stock quantity.';
+                    }
+                    final int? quantity = int.tryParse(value.trim());
+                    if (quantity == null) return 'Use a whole number.';
+                    if (quantity < 0) return 'Stock cannot be negative.';
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return 'Enter a stock quantity.';
-                  final int? quantity = int.tryParse(value.trim());
-                  if (quantity == null) return 'Use a whole number.';
-                  if (quantity < 0) return 'Stock cannot be negative.';
-                  return null;
-                },
-              ),
               const SizedBox(height: AppSpacing.xl),
               if (!widget.readOnly) ...[
                 FilledButton(
@@ -278,6 +356,189 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     );
   }
 
+  List<Widget> _digitalFields(ThemeData theme) {
+    final String? existingName = _clearDigitalFile
+        ? null
+        : widget.product?.digitalFileName;
+    return [
+      Row(
+        children: [
+          Icon(
+            Icons.cloud_download_outlined,
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            'Digital delivery',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        'The buyer receives this after payment, by email and on a private '
+        'download page. Digital products never run out of stock.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      TextFormField(
+        controller: _digitalUrl,
+        enabled: !widget.readOnly,
+        keyboardType: TextInputType.url,
+        decoration: InputDecoration(
+          labelText: 'Download link (optional)',
+          hintText: 'https://drive.google.com/...',
+          errorText: _fieldErrors['digital_url'],
+          helperText: 'Buyers open this from their delivery page.',
+        ),
+        validator: (value) {
+          if (!_isDigital) return null;
+          final String url = value?.trim() ?? '';
+          final bool hasFile = _pickedFile != null || _hasExistingFile;
+          if (url.isEmpty && !hasFile) {
+            return 'Add a download link or upload a file.';
+          }
+          if (url.isNotEmpty && !RegExp(r'^https?://').hasMatch(url)) {
+            return 'Enter a link starting with http:// or https://';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      TextFormField(
+        controller: _digitalInstructions,
+        enabled: !widget.readOnly,
+        maxLines: 3,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: InputDecoration(
+          labelText: 'Instructions for the buyer (optional)',
+          hintText: 'Unzip the file and open start.html',
+          alignLabelWithHint: true,
+          errorText: _fieldErrors['digital_instructions'],
+        ),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      Text('Product file', style: theme.textTheme.labelLarge),
+      const SizedBox(height: AppSpacing.sm),
+      if (_pickedFile != null)
+        _fileTile(
+          theme,
+          name: _pickedFile!.name,
+          detail: formatFileSize(_pickedFile!.sizeBytes),
+          onRemove: widget.readOnly
+              ? null
+              : () => setState(() => _pickedFile = null),
+        )
+      else if (existingName != null)
+        _fileTile(
+          theme,
+          name: existingName,
+          detail: 'Uploaded file',
+          onRemove: widget.readOnly
+              ? null
+              : () => setState(() => _clearDigitalFile = true),
+        )
+      else
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: (widget.readOnly || _pickingFile) ? null : _pickFile,
+            icon: const Icon(Icons.upload_file),
+            label: Text(_pickingFile ? 'Choosing…' : 'Upload file'),
+          ),
+        ),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        'PDF, ZIP, image, audio or video, up to 6 MB. You can set both a link '
+        'and a file.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
+      ),
+    ];
+  }
+
+  Widget _fileTile(
+    ThemeData theme, {
+    required String name,
+    required String detail,
+    required VoidCallback? onRemove,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.field),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.insert_drive_file_outlined,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  detail,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Remove file',
+              onPressed: onRemove,
+              icon: const Icon(Icons.close, size: 20),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickFile() async {
+    setState(() => _pickingFile = true);
+    try {
+      final file = await _fileService.pick();
+      if (!mounted || file == null) return;
+      if (file.sizeBytes > kDigitalFileMaxBytes) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That file is larger than 6 MB.')),
+        );
+        return;
+      }
+      setState(() {
+        _pickedFile = file;
+        _clearDigitalFile = false;
+      });
+    } on Object {
+      // A platform without a file picker simply leaves the upload empty; the
+      // product can still be saved with a link instead.
+    } finally {
+      if (mounted) setState(() => _pickingFile = false);
+    }
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -298,11 +559,16 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         id: widget.product?.id,
         name: _name.text.trim(),
         priceKobo: priceKobo,
-        stockQuantity: int.parse(_stock.text.trim()),
+        stockQuantity: int.tryParse(_stock.text.trim()) ?? 0,
         description: _description.text.trim(),
         category: _category.text.trim(),
         sku: _sku.text.trim(),
         imageUrl: _imageUrl,
+        kind: _kind,
+        digitalUrl: _digitalUrl.text.trim(),
+        digitalInstructions: _digitalInstructions.text.trim(),
+        digitalFile: _pickedFile,
+        clearDigitalFile: _clearDigitalFile,
       );
       messenger.showSnackBar(
         SnackBar(
@@ -330,18 +596,24 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           height: 96,
           decoration: BoxDecoration(
             color: theme.colorScheme.primary.withValues(alpha: 0.08),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant,
-            ),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
             borderRadius: BorderRadius.circular(AppRadius.field),
           ),
           child: hasPhoto
-              ? Image.memory(_imageBytes!, width: 96, height: 96, fit: BoxFit.cover)
+              ? Image.memory(
+                  _imageBytes!,
+                  width: 96,
+                  height: 96,
+                  fit: BoxFit.cover,
+                )
               : Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.photo_library_outlined, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.photo_library_outlined,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(height: 6),
                       Text(
                         _imageUrl == null ? 'Add photo' : 'Change',

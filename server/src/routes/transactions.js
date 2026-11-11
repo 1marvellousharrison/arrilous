@@ -9,6 +9,7 @@ import {
   transactionCreateSchema,
   transactionListQuerySchema,
   statusUpdateSchema,
+  digitalDeliverSchema,
   toFieldErrors,
 } from '../lib/validators.js';
 import {
@@ -29,6 +30,8 @@ import {
   safeAddAppNotification,
 } from '../lib/notifications.js';
 import { STAFF_CUSTOMER_VISIBILITY } from './customers.js';
+import { publicSaleUrl } from './public.js';
+import { emailService } from '../services/email.js';
 
 export const transactionRouter = express.Router();
 
@@ -68,6 +71,12 @@ export function publicTransaction(row, { items = null } = {}) {
     notes: row.notes,
     deliveryAddress: row.delivery_address,
     createdByUserId: row.created_by_user_id ?? null,
+    // Digital sales carry the token for the buyer's public page. It is scoped
+    // to this business's authenticated view; the public route is the only place
+    // it is served without a login.
+    publicToken: row.public_token ?? null,
+    digitalDeliveryEmail: row.digital_delivery_email ?? null,
+    digitalDeliveredAt: row.digital_delivered_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...publicStatuses(row),
@@ -86,6 +95,13 @@ export function publicItem(row) {
     quantity: row.quantity,
     unitPriceKobo: row.unit_price_kobo,
     subtotalKobo: row.subtotal_kobo,
+    // A snapshot of the asset at the moment of sale. Editing the product later
+    // cannot change what this buyer receives.
+    isDigital: Boolean(row.is_digital),
+    digitalUrl: row.digital_url ?? null,
+    digitalInstructions: row.digital_instructions ?? null,
+    digitalFileName: row.digital_file_name ?? null,
+    hasDigitalFile: Boolean(row.digital_file_id),
   };
 }
 
@@ -118,7 +134,11 @@ function transactionScope(req) {
 
 async function itemsFor(transactionId) {
   return (await queryAll(
-    'SELECT * FROM transaction_items WHERE transaction_id = ? ORDER BY created_at ASC',
+    `SELECT ti.*, df.file_name AS digital_file_name
+       FROM transaction_items ti
+       LEFT JOIN digital_files df ON df.id = ti.digital_file_id
+      WHERE ti.transaction_id = ?
+      ORDER BY ti.created_at ASC`,
     transactionId
   )).map(publicItem);
 }
@@ -165,6 +185,10 @@ async function resolveItems(businessId, rawItems) {
         unitPriceKobo: unitPrice,
         quantity: item.quantity,
         subtotalKobo: unitPrice * item.quantity,
+        isDigital: (product.kind ?? 'physical') === 'digital',
+        digitalUrl: product.digital_url ?? null,
+        digitalInstructions: product.digital_instructions ?? null,
+        digitalFileId: product.digital_file_id ?? null,
       };
     }
 
@@ -182,6 +206,10 @@ async function resolveItems(businessId, rawItems) {
       unitPriceKobo: unitPrice,
       quantity: item.quantity,
       subtotalKobo: unitPrice * item.quantity,
+      isDigital: false,
+      digitalUrl: null,
+      digitalInstructions: null,
+      digitalFileId: null,
     };
   }));
 }
@@ -214,13 +242,20 @@ transactionRouter.post('/', async (req, res) => {
 
   const items = await resolveItems(businessId, body.items);
   const subtotal = items.reduce((sum, item) => sum + item.subtotalKobo, 0);
+  const hasDigital = items.some((item) => item.isDigital);
+  const hasPhysical = items.some((item) => !item.isDigital);
 
   if (body.discount_kobo > subtotal) {
     throw badRequest('The discount cannot be more than the subtotal.', [
       { field: 'discount_kobo', message: 'Discount is larger than the items total.' },
     ]);
   }
-  if (body.delivery_required && !body.delivery_address) {
+
+  // Delivery only makes sense when something physical is in the cart. An
+  // all-digital sale keeps its address and fee out of the record even if the
+  // client left the switch on, so a digital order can never wait at a depot.
+  const deliveryRequired = Boolean(body.delivery_required) && hasPhysical;
+  if (deliveryRequired && !body.delivery_address) {
     throw badRequest('Add the address this order should be delivered to.', [
       { field: 'delivery_address', message: 'A delivery address is required.' },
     ]);
@@ -240,7 +275,10 @@ transactionRouter.post('/', async (req, res) => {
   const transactionId = crypto.randomUUID();
   const transactionNumber = await nextTransactionNumber(businessId);
   // Phase 7 defaults: pending / unpaid / not_required|pending / open.
-  const deliveryStatus = body.delivery_required ? 'pending' : 'not_required';
+  const deliveryStatus = deliveryRequired ? 'pending' : 'not_required';
+  // The buyer's public page handle is minted once, only when there is a digital
+  // asset to deliver. A walk-in physical sale never gets an unauthenticated link.
+  const publicToken = hasDigital ? crypto.randomBytes(24).toString('base64url') : null;
 
   await transaction(async () => {
     await run(
@@ -248,8 +286,8 @@ transactionRouter.post('/', async (req, res) => {
          (id, business_id, customer_id, transaction_number, source, subtotal_kobo,
           discount_kobo, delivery_fee_kobo, total_kobo, notes, delivery_required,
           delivery_address, order_status, payment_status, delivery_status,
-          completion_status, created_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, 'open', ?)`,
+          completion_status, created_by_user_id, public_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, 'open', ?, ?)`,
       transactionId,
       businessId,
       body.customer_id ?? null,
@@ -260,18 +298,20 @@ transactionRouter.post('/', async (req, res) => {
       deliveryFee,
       total,
       body.notes ?? null,
-      body.delivery_required ? 1 : 0,
-      body.delivery_address ?? null,
+      deliveryRequired ? 1 : 0,
+      deliveryRequired ? body.delivery_address ?? null : null,
       deliveryStatus,
-      req.auth.userId
+      req.auth.userId,
+      publicToken
     );
 
     for (const item of items) {
       await run(
         `INSERT INTO transaction_items
            (id, transaction_id, product_id, product_name_snapshot, image_url,
-            quantity, unit_price_kobo, subtotal_kobo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            quantity, unit_price_kobo, subtotal_kobo, is_digital, digital_url,
+            digital_instructions, digital_file_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         crypto.randomUUID(),
         transactionId,
         item.productId,
@@ -279,7 +319,11 @@ transactionRouter.post('/', async (req, res) => {
         item.imageUrl ?? null,
         item.quantity,
         item.unitPriceKobo,
-        item.subtotalKobo
+        item.subtotalKobo,
+        item.isDigital ? 1 : 0,
+        item.digitalUrl ?? null,
+        item.digitalInstructions ?? null,
+        item.digitalFileId ?? null
       );
     }
 
@@ -311,11 +355,11 @@ transactionRouter.post('/', async (req, res) => {
     severity: 'success',
   });
 
-  res.status(201).json({
-    transaction: publicTransaction(await findOwnedTransaction(businessId, transactionId), {
-      items: await itemsFor(transactionId),
-    }),
+  const payload = publicTransaction(await findOwnedTransaction(businessId, transactionId), {
+    items: await itemsFor(transactionId),
   });
+  payload.publicUrl = publicSaleUrl(req, payload.publicToken);
+  res.status(201).json({ transaction: payload });
 });
 
 transactionRouter.get('/', async (req, res) => {
@@ -379,13 +423,98 @@ transactionRouter.get('/:id', async (req, res) => {
     ? await queryOne('SELECT * FROM customers WHERE id = ?', row.customer_id)
     : null;
 
+  const transaction = publicTransaction(row, { items: await itemsFor(row.id) });
+  transaction.publicUrl = publicSaleUrl(req, row.public_token);
+
   res.json({
-    transaction: publicTransaction(row, { items: await itemsFor(row.id) }),
+    transaction,
     customer: customer
       ? { id: customer.id, name: customer.name, phone: customer.phone, email: customer.email }
       : null,
     // Phase 8 — the chronological timeline Phase 10 renders.
     history: await historyFor(row.id),
+  });
+});
+
+// POST /api/v1/transactions/:id/deliver — emails a paid digital order.
+transactionRouter.post('/:id/deliver', async (req, res) => {
+  const body = parse(digitalDeliverSchema, req.body);
+  const row = await findOwnedTransaction(req.business.id, req.params.id, {
+    staffUserId: transactionScope(req),
+  });
+
+  const digitalItems = (await itemsFor(row.id)).filter((item) => item.isDigital);
+  if (digitalItems.length === 0) {
+    throw badRequest('This sale has no digital products to deliver.');
+  }
+  if (row.payment_status !== 'paid') {
+    throw badRequest('Confirm payment before sending the digital products.', [
+      { field: 'paymentStatus', message: 'Mark the sale as paid first.' },
+    ]);
+  }
+
+  // Older digital sales (or a manually repaired row) may lack a token; mint one
+  // on the way out rather than making the owner re-record the sale.
+  let token = row.public_token;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('base64url');
+    await run('UPDATE transactions SET public_token = ? WHERE id = ?', token, row.id);
+  }
+
+  const customer = row.customer_id
+    ? await queryOne('SELECT id, email FROM customers WHERE id = ?', row.customer_id)
+    : null;
+  const email = body.email ?? row.digital_delivery_email ?? customer?.email ?? null;
+  if (!email) {
+    throw validationFailed([
+      {
+        field: 'email',
+        message: 'Add the email address the buyer should receive this at.',
+      },
+    ]);
+  }
+
+  const publicUrl = publicSaleUrl(req, token);
+  let emailSent = false;
+  let message;
+  try {
+    const result = await emailService.sendDigitalDelivery({
+      to: email,
+      businessName: req.business.business_name,
+      transactionNumber: row.transaction_number,
+      items: digitalItems,
+      url: publicUrl,
+    });
+    emailSent = Boolean(result.delivered);
+    message = emailSent
+      ? `Sent to ${email}.`
+      : 'Email is not configured on this server. Share the public link instead.';
+  } catch {
+    // A provider outage must not hide the link: the owner can still deliver by
+    // copying the public URL, which is the same page the email points at.
+    message = 'The email provider refused the message. Share the public link instead.';
+  }
+
+  const now = new Date().toISOString();
+  await run(
+    `UPDATE transactions
+        SET digital_delivery_email = ?,
+            digital_delivered_at = CASE WHEN ? = 1 THEN ? ELSE digital_delivered_at END,
+            updated_at = ?
+      WHERE id = ?`,
+    email,
+    emailSent ? 1 : 0,
+    now,
+    now,
+    row.id
+  );
+
+  res.json({
+    status: 'success',
+    emailSent,
+    email,
+    publicUrl,
+    message,
   });
 });
 

@@ -169,6 +169,24 @@ columns mirroring the organization (including `planned_hours`), and (from
 | `0022_notification_product` | `product_id` on `notifications` - stock alerts point at the shelf item |
 | `0023_notification_actor` | `actor_user_id` on `notifications` - who caused a sale, status change or restock |
 | `0024_customer_creator` | `created_by_user_id` on `customers` - keeps a staff-registered customer in that staff's own book |
+| `0025_digital_products` | `digital_files`; `kind`/digital columns on `products`; `public_token`/delivery columns on `transactions`; digital snapshot columns on `transaction_items` |
+
+### Digital products
+
+`digital_files` stores the bytes of an uploaded asset because no object store is
+configured: `business_id`, `file_name`, `mime_type`, `size_bytes`, `data_base64`.
+Rows are immutable; the only write after insert is deleting an orphan.
+
+`products` gains `kind` (`physical` by default, or `digital`), `digital_url`,
+`digital_instructions` and `digital_file_id` → `digital_files`. A digital row
+keeps `stock_quantity` at 0 and is excluded from the low-stock query, so it never
+raises a shelf alert.
+
+`transactions` gains `public_token` (UNIQUE, minted only for a sale that contains
+a digital line), `digital_delivery_email` and `digital_delivered_at`.
+`transaction_items` gains `is_digital`, `digital_url`, `digital_instructions` and
+`digital_file_id` — the snapshot a buyer keeps even if the product is edited,
+archived or deleted later.
 
 ### Staff customer book
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/transaction_repository.dart';
@@ -32,16 +33,28 @@ class TransactionDetailScreen extends StatefulWidget {
   final bool canChangeStatus;
 
   @override
-  State<TransactionDetailScreen> createState() => _TransactionDetailScreenState();
+  State<TransactionDetailScreen> createState() =>
+      _TransactionDetailScreenState();
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   bool _acting = false;
 
+  /// The email field's controller lives with the screen, not the dialog method:
+  /// disposing it when `showDialog` returns would tear it down while the route's
+  /// exit animation is still building the field.
+  TextEditingController? _deliveryEmail;
+
   @override
   void initState() {
     super.initState();
     widget.transactions.loadDetail(widget.transactionId);
+  }
+
+  @override
+  void dispose() {
+    _deliveryEmail?.dispose();
+    super.dispose();
   }
 
   @override
@@ -68,8 +81,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             ],
           ),
           body: _body(repository, transaction),
-          bottomNavigationBar:
-              transaction == null ? null : _actionBar(repository, transaction),
+          bottomNavigationBar: transaction == null
+              ? null
+              : _actionBar(repository, transaction),
         );
       },
     );
@@ -83,7 +97,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       return EmptyState(
         icon: Icons.receipt_long_outlined,
         title: 'Transaction unavailable',
-        message: repository.detailError ?? 'This transaction could not be loaded.',
+        message:
+            repository.detailError ?? 'This transaction could not be loaded.',
         action: OutlinedButton(
           onPressed: () => repository.loadDetail(widget.transactionId),
           child: const Text('Retry'),
@@ -103,7 +118,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           _items(transaction),
           const SizedBox(height: AppSpacing.lg),
           _charges(transaction),
-          if (transaction.deliveryRequired && transaction.deliveryAddress != null) ...[
+          if (transaction.hasDigitalItems) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _digital(repository, transaction),
+          ],
+          if (transaction.deliveryRequired &&
+              transaction.deliveryAddress != null) ...[
             const SizedBox(height: AppSpacing.lg),
             _delivery(transaction),
           ],
@@ -128,7 +148,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             transaction.transactionNumber,
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -152,7 +174,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               const Spacer(),
               if (transaction.outstandingKobo > 0)
                 StatusPill(
-                  label: '${formatKobo(transaction.outstandingKobo)} outstanding',
+                  label:
+                      '${formatKobo(transaction.outstandingKobo)} outstanding',
                   color: AppColors.danger,
                   icon: Icons.error_outline,
                 ),
@@ -202,7 +225,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Status',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           for (final axis in TransactionAxis.values)
@@ -229,7 +254,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Items',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           for (final item in transaction.items)
@@ -258,16 +285,22 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                         Text(item.name),
                         Text(
                           '${formatKobo(item.unitPriceKobo)} each'
-                          '${item.isAdHoc ? ' • one-off line' : ''}',
+                          '${item.isAdHoc ? ' • one-off line' : ''}'
+                          '${item.isDigital ? ' • digital download' : ''}',
                           style: TextStyle(
                             fontSize: 12,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.6,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Text(formatKobo(item.subtotalKobo), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    formatKobo(item.subtotalKobo),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ],
               ),
             ),
@@ -284,7 +317,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Charges',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           _line('Subtotal', formatKobo(transaction.subtotalKobo)),
@@ -309,7 +344,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [Text(label, style: style), Text(value, style: style)],
+        children: [
+          Text(label, style: style),
+          Text(value, style: style),
+        ],
       ),
     );
   }
@@ -339,6 +377,189 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     );
   }
 
+  /// The buyer's private page and the email that carries it.
+  ///
+  /// The page only unlocks once payment is confirmed, so an unpaid sale explains
+  /// that instead of offering a send the server would refuse.
+  Widget _digital(TransactionRepository repository, Transaction transaction) {
+    final theme = Theme.of(context);
+    final paid = transaction.paymentStatus == 'paid';
+    final url = transaction.publicUrl;
+    final deliveredAt = transaction.digitalDeliveredAt;
+    // The last address actually used wins; before the first send, the customer's
+    // saved email is the best guess and makes the dialog one tap.
+    final knownEmail =
+        transaction.digitalDeliveryEmail ?? transaction.customerEmail;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+    );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.cloud_download_outlined,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'Digital delivery',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (url != null) ...[
+            Text('Buyer download page', style: muted),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.only(left: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(AppRadius.field),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Copy link',
+                    onPressed: () => _copyLink(url),
+                    icon: const Icon(Icons.copy, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          ] else
+            Text('The download link is created with the sale.', style: muted),
+          const SizedBox(height: AppSpacing.md),
+          if (!paid)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(
+                    Icons.lock_outline,
+                    size: 18,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Confirm payment before sending. The page stays locked '
+                    'until this sale is paid.',
+                    style: muted,
+                  ),
+                ),
+              ],
+            )
+          else ...[
+            Text(
+              deliveredAt != null
+                  ? 'Last sent ${_formatDateTime(deliveredAt)}'
+                        '${knownEmail != null ? ' to $knownEmail' : ''}.'
+                  : knownEmail != null
+                  ? 'Will send to $knownEmail.'
+                  : 'Email the buyer the link, or copy it and send it yourself.',
+              style: muted,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: _acting
+                  ? null
+                  : () => _sendDigital(repository, transaction),
+              icon: const Icon(Icons.email_outlined),
+              label: Text(deliveredAt == null ? 'Send by email' : 'Send again'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyLink(String url) async {
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Download link copied.')));
+  }
+
+  Future<void> _sendDigital(
+    TransactionRepository repository,
+    Transaction transaction,
+  ) async {
+    final controller = TextEditingController(
+      text: transaction.digitalDeliveryEmail ?? transaction.customerEmail ?? '',
+    );
+    _deliveryEmail?.dispose();
+    _deliveryEmail = controller;
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Send the download link'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Buyer email',
+            hintText: 'buyer@example.com',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty || !value.contains('@')) return;
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    if (email == null) return;
+
+    setState(() => _acting = true);
+    try {
+      final result = await repository.deliverDigital(email: email);
+      if (!mounted) return;
+      // The server is honest when no mail provider is configured, so repeat its
+      // message rather than claiming the buyer's inbox has been filled.
+      final message = result.emailSent
+          ? 'Sent to ${result.email}.'
+          : (result.message ??
+                'Email not sent. Copy the download link instead.');
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } on ApiException catch (error) {
+      _showError(error.message);
+    } on NetworkException catch (error) {
+      _showError(error.message);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
   Widget _notes(Transaction transaction) {
     final theme = Theme.of(context);
     return AppCard(
@@ -347,7 +568,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Notes',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(transaction.notes!),
@@ -367,7 +590,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Timeline',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           if (history.isEmpty)
@@ -418,14 +643,19 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                             _formatTime(entry.createdAt),
                             style: TextStyle(
                               fontSize: 11,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
                           if (entry.note != null) ...[
                             const SizedBox(height: 2),
                             Text(
                               '"${entry.note}"',
-                              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ],
                         ],
@@ -463,9 +693,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           children: [
             Text(
               'Add a note',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelMedium
+              style: Theme.of(context).textTheme.labelMedium
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -494,7 +722,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             Icon(
               transaction.isCompleted ? Icons.check_circle : Icons.block,
               size: 18,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.6),
             ),
             const SizedBox(width: AppSpacing.sm),
             Text(
@@ -502,7 +731,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   ? 'This transaction is complete.'
                   : 'No further status changes are available.',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -517,9 +747,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         children: [
           Text(
             'Move to',
-            style: Theme.of(context)
-                .textTheme
-                .labelMedium
+            style: Theme.of(context).textTheme.labelMedium
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -530,14 +758,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               for (final action in actions)
                 ActionChip(
                   avatar: CircleAvatar(
-                    backgroundColor: statusColor(action.value).withValues(alpha: 0.18),
+                    backgroundColor: statusColor(action.value)
+                        .withValues(alpha: 0.18),
                     child: Icon(
                       _iconFor(action.axis),
                       size: 14,
                       color: statusColor(action.value),
                     ),
                   ),
-                  label: Text('${action.axis.label}: ${prettyStatus(action.value)}'),
+                  label: Text(
+                    '${action.axis.label}: ${prettyStatus(action.value)}',
+                  ),
                   onPressed: _acting
                       ? null
                       : () => _apply(repository, transaction, action),
@@ -552,18 +783,18 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   /// The shared bottom action surface, so the note bar and the transition bar
   /// sit on the same footing.
   Widget _bottomBar(Widget child) => Container(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.md,
-          AppSpacing.lg,
-          MediaQuery.of(context).padding.bottom + AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-        ),
-        child: child,
-      );
+    padding: EdgeInsets.fromLTRB(
+      AppSpacing.lg,
+      AppSpacing.md,
+      AppSpacing.lg,
+      MediaQuery.of(context).padding.bottom + AppSpacing.md,
+    ),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+    ),
+    child: child,
+  );
 
   /// Staff note: appends to the timeline without moving any status. The server
   /// accepts a note on its own and records it as a `note` entry.
@@ -589,7 +820,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
             child: const Text('Save note'),
           ),
         ],
@@ -602,9 +834,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     try {
       await repository.updateStatuses(const {}, note: note);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Note added.')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Note added.')));
     } on ApiException catch (error) {
       _showError(error.message);
     } on NetworkException catch (error) {
@@ -615,11 +846,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   static IconData _iconFor(TransactionAxis axis) => switch (axis) {
-        TransactionAxis.order => Icons.receipt_outlined,
-        TransactionAxis.payment => Icons.payments_outlined,
-        TransactionAxis.delivery => Icons.local_shipping_outlined,
-        TransactionAxis.completion => Icons.task_alt,
-      };
+    TransactionAxis.order => Icons.receipt_outlined,
+    TransactionAxis.payment => Icons.payments_outlined,
+    TransactionAxis.delivery => Icons.local_shipping_outlined,
+    TransactionAxis.completion => Icons.task_alt,
+  };
 
   Future<void> _apply(
     TransactionRepository repository,

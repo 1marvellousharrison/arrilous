@@ -32,6 +32,7 @@ Build order: [`phase_build_prompt.md`](phase_build_prompt.md)
 | 17 | Development seed data | Done — `npm run seed` builds the ABC Fashion Store scenarios + a logistics network |
 | 18 | Documentation | Done — architecture, schema, API, environment, integrations |
 | — | **Integrated spec v3 (logistics)** | Done — org/rider accounts, availability, fleet, pricing, matching, delivery lifecycle, business/partner/rider dashboards, in-app notifications |
+| — | **Digital products** | Done — link/file assets, unlimited stock, all-digital and mixed carts, tokenised public page + optional email delivery |
 
 WhatsApp AI and payment gateways remain deliberately inactive (see
 `docs/future-integrations.md`); screenshot/photo order import through Gemini is
@@ -53,6 +54,11 @@ Two boundaries worth stating outright rather than leaving to be discovered:
 - **The app never sends a total.** Line prices for catalog products are read back
   from the database by the server, so a stale price in the UI cannot become the
   price of record.
+- **Digital products deliver themselves.** A digital listing has unlimited stock,
+  no delivery address and no shelf alert. Its buyer gets a tokenised public page
+  (`/api/v1/public/sales/:token`) that only unlocks once the sale is paid, plus
+  an optional email through Resend. Past buyers keep the exact link/file that was
+  on the product when they paid, because the sale snapshots the asset.
 
 - **Wallet** — balance, virtual account, card funding, and OTP-confirmed payouts.
   Available to business owners and logistics partners/riders.
@@ -80,7 +86,8 @@ dee/
 │  │  │                        error envelope
 │  │  └─ routes/               auth, business, products, customers, transactions,
 │  │                           dashboard, logistics, ai (screenshot import),
-│  │                           notifications, wallet, staff
+│  │                           notifications, wallet, staff, public (digital
+│  │                           download pages)
 │  └─ tests/                   node:test suites
 ├─ app/                        Flutter 3.47 mobile client (Android/iOS/Web)
 │  └─ lib/
@@ -138,8 +145,8 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.20:4000/api/v1   # physi
 ## Tests
 
 ```bash
-cd server && npm test     # 315 tests
-cd app    && flutter test # 231 tests
+cd server && npm test     # 328 tests
+cd app    && flutter test # 237 tests
 cd app    && flutter analyze
 ```
 
@@ -152,6 +159,7 @@ cd app    && flutter analyze
 | `server/tests/transactions.test.js` | Phases 5–7: totals, snapshots, status rules, cross-tenant |
 | `server/tests/status_history.test.js` | Phase 8: trail on create, diffed updates, notes, chronology |
 | `server/tests/dashboard.test.js` | Phases 11-12: date filters, aggregates, catalog counts, isolation |
+| `server/tests/digital_products.test.js` | digital catalog, upload cap, all-digital/mixed carts, paid public page, deliver endpoint |
 | `server/tests/analytics.test.js` | owner business analysis: money, trend, products, customers, stock, delivery, owner-only access |
 | `server/tests/low_stock_notifications.test.js` | low-stock alert lifecycle, out-of-stock severity, additive restock, read-all importance, dashboard summary, staff visibility |
 | `server/tests/notification_events.test.js` | sale/status/restock events, `actor_user_id` attribution, per-user inbox scoping, owner-only staff activity, staff AI isolation |
@@ -161,9 +169,9 @@ cd app    && flutter analyze
 | `server/tests/ai_import_complete.test.js`, `ai_catalog_match.test.js` | screenshot import queue + polling, catalog matching, phone normalization, draft deletion |
 | `app/test/money_test.dart` | kobo <-> naira round trip, sub-cent rejection |
 | `app/test/business_repositories_test.dart` | repository parsing, query params, no client totals |
-| `app/test/business_screens_test.dart` | setup flow, location fallback, form validation |
+| `app/test/business_screens_test.dart` | setup flow, location fallback, form validation, digital product link/upload |
 | `app/test/transaction_repositories_test.dart` | sale posting, filters, paging, detail, legal actions |
-| `app/test/transaction_screens_test.dart` | dashboard, history, new sale (including inline customer creation), detail + timeline |
+| `app/test/transaction_screens_test.dart` | dashboard, history, new sale (including inline customer creation and all-digital carts), detail + timeline + delivery card |
 | `app/test/logistics_screens_test.dart` | spec 6/41/42/43/44: dashboard logistics strip, entry options, both workspaces, provider cards |
 | `app/test/ai_chat_screen_test.dart` | AI chat opens at the newest message, searches drafts, deletes only unsold drafts |
 | `app/test/app_notifications_test.dart` | merged inbox shows app alerts + actor labels, filters by day/week/month/year, marks one read, and opens from the profile tab |

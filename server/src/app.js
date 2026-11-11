@@ -13,6 +13,7 @@ import { walletRouter } from './routes/wallet.js';
 import { staffRouter } from './routes/staff.js';
 import aiRouter from './routes/ai.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { publicDeliveryRouter } from './routes/public.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { runMigrations, queryOne } from './db/index.js';
 
@@ -56,6 +57,9 @@ export async function createApp({ migrate = true } = {}) {
   });
 
   app.use('/api/v1/auth', authRouter);
+  // Unauthenticated by design: a buyer's sale token is the credential. Kept
+  // before the protected routers so it is obvious this is the only public door.
+  app.use('/api/v1/public', publicDeliveryRouter);
   app.use('/api/v1/business', businessRouter);
   app.use('/api/v1/products', productRouter);
   app.use('/api/v1/customers', customerRouter);

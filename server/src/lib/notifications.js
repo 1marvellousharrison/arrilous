@@ -27,12 +27,14 @@ function messageFor(name, quantity) {
     : `${name} has only ${quantity} left. Restock it soon.`;
 }
 
-/// Every active product at or below the threshold, emptiest first.
+/// Every active product at or below the threshold, emptiest first. Digital
+/// products have unlimited stock, so they never enter the shelf warning.
 export async function lowStockRows(businessId) {
   return queryAll(
     `SELECT id, name, stock_quantity
        FROM products
-      WHERE business_id = ? AND active = 1 AND stock_quantity <= ?
+      WHERE business_id = ? AND active = 1 AND kind = 'physical'
+        AND stock_quantity <= ?
       ORDER BY stock_quantity ASC, lower(name) ASC`,
     businessId,
     LOW_STOCK_THRESHOLD

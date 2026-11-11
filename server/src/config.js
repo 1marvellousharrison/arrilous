@@ -139,6 +139,11 @@ export const config = {
     from: process.env.OTP_EMAIL_FROM ?? 'Biziness <onboarding@resend.dev>',
   },
 
+  // The API base used to build buyer-facing digital delivery links, e.g.
+  // https://arrilous.onrender.com/api/v1. When absent the request's own host is
+  // used, which is right for local development and Render.
+  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? null,
+
   rateLimit: {
     windowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '900000', 10),
     maxAuthAttempts: Number.parseInt(process.env.RATE_LIMIT_MAX ?? '20', 10),

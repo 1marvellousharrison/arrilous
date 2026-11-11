@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dee_app/core/api/api_client.dart';
+import 'package:dee_app/core/services/digital_file_service.dart';
 import 'package:dee_app/core/services/location_service.dart';
 import 'package:dee_app/core/services/logo_service.dart';
 import 'package:dee_app/core/state/auth_repository.dart';
@@ -50,6 +51,17 @@ class _FakeLogoService implements LogoService {
 
   @override
   Future<Uint8List?> pick() async => bytes;
+}
+
+/// A file picker that returns one fixed digital asset, standing in for the OS
+/// file dialog the same way [_FakeLogoService] stands in for the gallery.
+class _FakeDigitalFileService implements DigitalFileService {
+  _FakeDigitalFileService(this.file);
+
+  final PickedDigitalFile? file;
+
+  @override
+  Future<PickedDigitalFile?> pick() async => file;
 }
 
 void main() {
@@ -946,6 +958,105 @@ void main() {
       );
       final body = jsonDecode(post.body) as Map<String, dynamic>;
       expect(body['image_url'], startsWith('data:image/png;base64,'));
+    });
+
+    testWidgets('a digital product sends its link and never a stock count',
+        (tester) async {
+      useTallSurface(tester);
+      final repos = await signInOwner(
+        (_) async => json({
+          'product': {
+            'id': 'product-1',
+            'name': 'E-book',
+            'priceKobo': 500000,
+            'stockQuantity': 0,
+            'active': true,
+            'kind': 'digital',
+            'digitalUrl': 'https://example.com/ebook',
+          },
+        }, status: 201),
+      );
+
+      await tester.pumpWidget(wrap(ProductFormScreen(catalog: repos.catalog)));
+
+      await tester.tap(find.text('Digital'));
+      await tester.pumpAndSettle();
+
+      // A digital listing has no shelf, so the stock field disappears entirely.
+      expect(find.widgetWithText(TextFormField, 'Stock quantity'), findsNothing);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Product name'),
+        'E-book',
+      );
+      await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '5000');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Download link (optional)'),
+        'https://example.com/ebook',
+      );
+      await tapLabel(tester, 'Add product');
+      await tester.pumpAndSettle();
+
+      final post = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/products'),
+      );
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      expect(body['kind'], 'digital');
+      expect(body['digital_url'], 'https://example.com/ebook');
+      expect(body['stock_quantity'], 0, reason: 'digital stock is always unlimited');
+    });
+
+    testWidgets('uploads a chosen digital asset as base64', (tester) async {
+      useTallSurface(tester);
+      final bytes = Uint8List.fromList(utf8.encode('the guide'));
+      final repos = await signInOwner(
+        (_) async => json({
+          'product': {
+            'id': 'product-1',
+            'name': 'Guide',
+            'priceKobo': 500000,
+            'stockQuantity': 0,
+            'active': true,
+            'kind': 'digital',
+            'hasDigitalFile': true,
+          },
+        }, status: 201),
+      );
+
+      await tester.pumpWidget(wrap(ProductFormScreen(
+        catalog: repos.catalog,
+        digitalFileService: _FakeDigitalFileService(
+          PickedDigitalFile(
+            name: 'guide.txt',
+            mimeType: 'text/plain',
+            bytes: bytes,
+          ),
+        ),
+      )));
+
+      await tester.tap(find.text('Digital'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Product name'),
+        'Guide',
+      );
+      await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '5000');
+
+      await tapLabel(tester, 'Upload file');
+      await tester.pumpAndSettle();
+      expect(find.text('guide.txt'), findsOneWidget, reason: 'the pick previews in place');
+
+      await tapLabel(tester, 'Add product');
+      await tester.pumpAndSettle();
+
+      final post = log.firstWhere(
+        (request) => request.method == 'POST' && request.url.path.endsWith('/products'),
+      );
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      final file = body['digital_file'] as Map<String, dynamic>;
+      expect(file['file_name'], 'guide.txt');
+      expect(file['mime_type'], 'text/plain');
+      expect(file['data_base64'], base64Encode(bytes));
     });
   });
 

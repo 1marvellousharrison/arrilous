@@ -29,6 +29,21 @@ Never commit `.env` — it is already in `server/.gitignore`.
 | `PORT` | `4000` | |
 | `CORS_ORIGINS` | `*` outside production, **required in production** | Comma-separated allow-list, e.g. `https://app.example.com`. The server refuses to boot when `NODE_ENV=production` and this is missing, empty, or `*`. |
 
+## Email and digital delivery
+
+Digital products can be emailed to the buyer once the sale is paid. The same
+provider also carries the business-details confirmation code.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | unset | Enables email through Resend. When unset, the server still returns the buyer's public download link with `emailSent: false` — it never pretends a mail was sent. |
+| `OTP_EMAIL_FROM` | `Biziness <onboarding@resend.dev>` | The From address for every outgoing email. Use a verified domain in production. |
+| `PUBLIC_BASE_URL` | request host | API base used to build buyer links, e.g. `https://arrilous.onrender.com/api/v1`. Set it when the API sits behind a proxy or a custom domain. |
+
+Uploaded assets travel inside the product JSON as base64 and are capped at
+**6 MB decoded**; the API's JSON body limit is 12 MB. There is no object store,
+so the bytes live in `digital_files` (see `docs/database-schema.md`).
+
 ## Database
 
 | Variable | Default | Notes |

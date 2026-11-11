@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
+import '../services/digital_file_service.dart';
 import '../state/auth_repository.dart';
 
 /// A catalog product as the API returns it.
@@ -16,21 +17,31 @@ class Product {
     this.category,
     this.sku,
     this.imageUrl,
+    this.kind = 'physical',
+    this.digitalUrl,
+    this.digitalInstructions,
+    this.digitalFileName,
+    this.hasDigitalFile = false,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
-        id: json['id'] as String,
-        businessId: json['businessId'] as String? ?? '',
-        name: json['name'] as String? ?? '',
-        // Money is an integer count of kobo; nothing here is ever a double.
-        priceKobo: (json['priceKobo'] as num?)?.toInt() ?? 0,
-        stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
-        active: json['active'] as bool? ?? true,
-        description: json['description'] as String?,
-        category: json['category'] as String?,
-        sku: json['sku'] as String?,
-        imageUrl: json['imageUrl'] as String?,
-      );
+    id: json['id'] as String,
+    businessId: json['businessId'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    // Money is an integer count of kobo; nothing here is ever a double.
+    priceKobo: (json['priceKobo'] as num?)?.toInt() ?? 0,
+    stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
+    active: json['active'] as bool? ?? true,
+    description: json['description'] as String?,
+    category: json['category'] as String?,
+    sku: json['sku'] as String?,
+    imageUrl: json['imageUrl'] as String?,
+    kind: json['kind'] as String? ?? 'physical',
+    digitalUrl: json['digitalUrl'] as String?,
+    digitalInstructions: json['digitalInstructions'] as String?,
+    digitalFileName: json['digitalFileName'] as String?,
+    hasDigitalFile: json['hasDigitalFile'] as bool? ?? false,
+  );
 
   final String id;
   final String businessId;
@@ -43,8 +54,18 @@ class Product {
   final String? sku;
   final String? imageUrl;
 
-  bool get isOutOfStock => stockQuantity <= 0;
-  bool get isLowStock => stockQuantity > 0 && stockQuantity <= 5;
+  /// `physical` (a shelf item) or `digital` (a downloadable asset).
+  final String kind;
+  final String? digitalUrl;
+  final String? digitalInstructions;
+  final String? digitalFileName;
+  final bool hasDigitalFile;
+
+  bool get isDigital => kind == 'digital';
+
+  /// Digital stock is unlimited, so it can never be out of stock or low.
+  bool get isOutOfStock => !isDigital && stockQuantity <= 0;
+  bool get isLowStock => !isDigital && stockQuantity > 0 && stockQuantity <= 5;
 }
 
 /// Phase 3 catalog state: products, category chips and search.
@@ -96,13 +117,16 @@ class CatalogRepository extends ChangeNotifier {
       'category': ?_category,
       if (_includeArchived) 'include_archived': 'true',
     };
-    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    final query = params.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: params).query}';
 
     try {
       final data = await _api.get('/products$query', token: _token);
-      _products = _objectList(data, 'products')
-          .map(Product.fromJson)
-          .toList(growable: false);
+      _products = _objectList(
+        data,
+        'products',
+      ).map(Product.fromJson).toList(growable: false);
     } on ApiException catch (error) {
       _error = error.message;
     } on NetworkException catch (error) {
@@ -154,19 +178,37 @@ class CatalogRepository extends ChangeNotifier {
     String? category,
     String? sku,
     String? imageUrl,
+    String kind = 'physical',
+    String? digitalUrl,
+    String? digitalInstructions,
+    PickedDigitalFile? digitalFile,
+    bool clearDigitalFile = false,
   }) async {
+    final bool digital = kind == 'digital';
     final body = <String, dynamic>{
       'name': name,
       // An integer kobo value: the server reads a JSON number as kobo already.
       'price_kobo': priceKobo,
-      'stock_quantity': stockQuantity,
+      // A digital listing never carries a shelf count; the server enforces the
+      // same rule, so sending zero keeps the client honest too.
+      'stock_quantity': digital ? 0 : stockQuantity,
       'description': _blankToNull(description),
       'category': _blankToNull(category),
       'sku': _blankToNull(sku),
       // The picture travels as an image data URL, or null when the owner never
       // picked one — sending it every time keeps clearing the photo possible.
       'image_url': _blankToNull(imageUrl),
+      'kind': kind,
     };
+    if (digital) {
+      body['digital_url'] = _blankToNull(digitalUrl);
+      body['digital_instructions'] = _blankToNull(digitalInstructions);
+    }
+    if (digitalFile != null) {
+      body['digital_file'] = digitalFile.toJson();
+    } else if (clearDigitalFile) {
+      body['clear_digital_file'] = true;
+    }
 
     final data = id == null
         ? await _api.post('/products', token: _token, body: body)
@@ -217,7 +259,11 @@ class CatalogRepository extends ChangeNotifier {
   String get _token {
     final session = _auth.session;
     if (session == null) {
-      throw ApiException(401, 'unauthorized', 'You need to sign in to continue.');
+      throw ApiException(
+        401,
+        'unauthorized',
+        'You need to sign in to continue.',
+      );
     }
     return session.accessToken;
   }

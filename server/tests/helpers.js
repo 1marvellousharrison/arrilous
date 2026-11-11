@@ -13,6 +13,9 @@ process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 process.env.OTP_EXPOSE_IN_RESPONSE = 'true';
 process.env.RATE_LIMIT_MAX = '1000';
 process.env.DATABASE_URL = '';
+// Never send a real email from the suite, even on a machine that has a Resend
+// key in its shell. Digital delivery tests assert the graceful unconfigured path.
+process.env.RESEND_API_KEY = '';
 // Never call the real vision model from tests; the upload tests exercise the
 // queue/poll path with an empty extraction instead.
 process.env.GEMINI_API_KEY = '';

@@ -100,9 +100,15 @@ class TransactionItem {
     required this.subtotalKobo,
     this.productId,
     this.imageUrl,
+    this.isDigital = false,
+    this.digitalUrl,
+    this.digitalInstructions,
+    this.digitalFileName,
+    this.hasDigitalFile = false,
   });
 
-  factory TransactionItem.fromJson(Map<String, dynamic> json) => TransactionItem(
+  factory TransactionItem.fromJson(Map<String, dynamic> json) =>
+      TransactionItem(
         id: json['id'] as String? ?? '',
         productId: json['productId'] as String?,
         name: json['name'] as String? ?? '',
@@ -110,6 +116,11 @@ class TransactionItem {
         quantity: (json['quantity'] as num?)?.toInt() ?? 0,
         unitPriceKobo: (json['unitPriceKobo'] as num?)?.toInt() ?? 0,
         subtotalKobo: (json['subtotalKobo'] as num?)?.toInt() ?? 0,
+        isDigital: json['isDigital'] as bool? ?? false,
+        digitalUrl: json['digitalUrl'] as String?,
+        digitalInstructions: json['digitalInstructions'] as String?,
+        digitalFileName: json['digitalFileName'] as String?,
+        hasDigitalFile: json['hasDigitalFile'] as bool? ?? false,
       );
 
   final String id;
@@ -122,6 +133,14 @@ class TransactionItem {
   final int quantity;
   final int unitPriceKobo;
   final int subtotalKobo;
+
+  /// A snapshot of the asset at the moment of sale. Editing or replacing the
+  /// product later cannot change what this buyer receives.
+  final bool isDigital;
+  final String? digitalUrl;
+  final String? digitalInstructions;
+  final String? digitalFileName;
+  final bool hasDigitalFile;
 
   /// True for a one-off line the owner typed rather than picked from the catalog.
   bool get isAdHoc => productId == null;
@@ -138,13 +157,15 @@ class StatusHistoryEntry {
     this.note,
   });
 
-  factory StatusHistoryEntry.fromJson(Map<String, dynamic> json) => StatusHistoryEntry(
+  factory StatusHistoryEntry.fromJson(Map<String, dynamic> json) =>
+      StatusHistoryEntry(
         id: json['id'] as String? ?? '',
         statusType: json['statusType'] as String? ?? 'order',
         oldValue: json['oldValue'] as String?,
         newValue: json['newValue'] as String? ?? '',
         note: json['note'] as String?,
-        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
       );
 
@@ -175,6 +196,34 @@ String _pretty(String status) {
   return head + status.substring(1).replaceAll('_', ' ');
 }
 
+/// What the API says after it tries to email a paid digital order.
+///
+/// [emailSent] is deliberately separate from the request succeeding: a server
+/// with no mail provider still returns the public link, and the owner needs to
+/// know the difference so they do not tell the buyer to check an inbox that
+/// will never fill.
+class DigitalDeliveryResult {
+  const DigitalDeliveryResult({
+    required this.email,
+    required this.emailSent,
+    required this.publicUrl,
+    this.message,
+  });
+
+  factory DigitalDeliveryResult.fromJson(Map<String, dynamic> json) =>
+      DigitalDeliveryResult(
+        email: json['email'] as String? ?? '',
+        emailSent: json['emailSent'] as bool? ?? false,
+        publicUrl: json['publicUrl'] as String?,
+        message: json['message'] as String?,
+      );
+
+  final String email;
+  final bool emailSent;
+  final String? publicUrl;
+  final String? message;
+}
+
 class Transaction {
   const Transaction({
     required this.id,
@@ -198,6 +247,11 @@ class Transaction {
     this.history = const [],
     this.customerName,
     this.customerPhone,
+    this.customerEmail,
+    this.publicToken,
+    this.publicUrl,
+    this.digitalDeliveryEmail,
+    this.digitalDeliveredAt,
   });
 
   factory Transaction.fromJson(
@@ -206,36 +260,44 @@ class Transaction {
     List<StatusHistoryEntry> history = const [],
     String? customerName,
     String? customerPhone,
-  }) =>
-      Transaction(
-        id: json['id'] as String,
-        transactionNumber: json['transactionNumber'] as String? ?? '',
-        customerId: json['customerId'] as String?,
-        source: json['source'] as String? ?? 'manual',
-        subtotalKobo: (json['subtotalKobo'] as num?)?.toInt() ?? 0,
-        discountKobo: (json['discountKobo'] as num?)?.toInt() ?? 0,
-        deliveryFeeKobo: (json['deliveryFeeKobo'] as num?)?.toInt() ?? 0,
-        totalKobo: (json['totalKobo'] as num?)?.toInt() ?? 0,
-        notes: json['notes'] as String?,
-        deliveryAddress: json['deliveryAddress'] as String?,
-        deliveryRequired: json['deliveryRequired'] as bool? ?? false,
-        orderStatus: json['orderStatus'] as String? ?? 'pending',
-        paymentStatus: json['paymentStatus'] as String? ?? 'unpaid',
-        deliveryStatus: json['deliveryStatus'] as String? ?? 'not_required',
-        completionStatus: json['completionStatus'] as String? ?? 'open',
-        createdAt: _date(json['createdAt']),
-        updatedAt: _date(json['updatedAt']),
-        items: items,
-        history: history,
-        customerName: customerName,
-        customerPhone: customerPhone,
-      );
+    String? customerEmail,
+  }) => Transaction(
+    id: json['id'] as String,
+    transactionNumber: json['transactionNumber'] as String? ?? '',
+    customerId: json['customerId'] as String?,
+    source: json['source'] as String? ?? 'manual',
+    subtotalKobo: (json['subtotalKobo'] as num?)?.toInt() ?? 0,
+    discountKobo: (json['discountKobo'] as num?)?.toInt() ?? 0,
+    deliveryFeeKobo: (json['deliveryFeeKobo'] as num?)?.toInt() ?? 0,
+    totalKobo: (json['totalKobo'] as num?)?.toInt() ?? 0,
+    notes: json['notes'] as String?,
+    deliveryAddress: json['deliveryAddress'] as String?,
+    deliveryRequired: json['deliveryRequired'] as bool? ?? false,
+    orderStatus: json['orderStatus'] as String? ?? 'pending',
+    paymentStatus: json['paymentStatus'] as String? ?? 'unpaid',
+    deliveryStatus: json['deliveryStatus'] as String? ?? 'not_required',
+    completionStatus: json['completionStatus'] as String? ?? 'open',
+    createdAt: _date(json['createdAt']),
+    updatedAt: _date(json['updatedAt']),
+    items: items,
+    history: history,
+    customerName: customerName,
+    customerPhone: customerPhone,
+    customerEmail: customerEmail,
+    publicToken: json['publicToken'] as String?,
+    publicUrl: json['publicUrl'] as String?,
+    digitalDeliveryEmail: json['digitalDeliveryEmail'] as String?,
+    digitalDeliveredAt: json['digitalDeliveredAt'] == null
+        ? null
+        : _date(json['digitalDeliveredAt']),
+  );
 
   final String id;
   final String transactionNumber;
   final String? customerId;
   final String? customerName;
   final String? customerPhone;
+  final String? customerEmail;
   final String source;
   final int subtotalKobo;
   final int discountKobo;
@@ -253,12 +315,25 @@ class Transaction {
   final List<TransactionItem> items;
   final List<StatusHistoryEntry> history;
 
+  /// The buyer's unauthenticated page for a digital sale. Null on a purely
+  /// physical sale, because there is nothing to download.
+  final String? publicToken;
+  final String? publicUrl;
+  final String? digitalDeliveryEmail;
+  final DateTime? digitalDeliveredAt;
+
+  /// True when at least one line is a digital asset.
+  bool get hasDigitalItems => items.any((item) => item.isDigital);
+
+  /// True when at least one line needs to be shipped.
+  bool get hasPhysicalItems => items.any((item) => !item.isDigital);
+
   String valueFor(TransactionAxis axis) => switch (axis) {
-        TransactionAxis.order => orderStatus,
-        TransactionAxis.payment => paymentStatus,
-        TransactionAxis.delivery => deliveryStatus,
-        TransactionAxis.completion => completionStatus,
-      };
+    TransactionAxis.order => orderStatus,
+    TransactionAxis.payment => paymentStatus,
+    TransactionAxis.delivery => deliveryStatus,
+    TransactionAxis.completion => completionStatus,
+  };
 
   /// Money the business is still owed on this sale.
   int get outstandingKobo =>
@@ -280,6 +355,7 @@ class DraftItem {
     required this.quantity,
     required this.unitPriceKobo,
     this.productId,
+    this.isDigital = false,
   });
 
   String name;
@@ -287,14 +363,18 @@ class DraftItem {
   int unitPriceKobo;
   String? productId;
 
+  /// Copied from the catalog product so the cart can tell a digital sale from
+  /// one that has to be shipped without a second lookup.
+  bool isDigital;
+
   int get subtotalKobo => unitPriceKobo * quantity;
 
   Map<String, dynamic> toJson() => {
-        if (productId != null) 'product_id': productId,
-        if (productId == null) 'name': name,
-        if (productId == null) 'unit_price_kobo': unitPriceKobo,
-        'quantity': quantity,
-      };
+    if (productId != null) 'product_id': productId,
+    if (productId == null) 'name': name,
+    if (productId == null) 'unit_price_kobo': unitPriceKobo,
+    'quantity': quantity,
+  };
 }
 
 /// Phase 9-11 transaction state: composing a sale, listing history, and the
@@ -362,16 +442,16 @@ class TransactionRepository extends ChangeNotifier {
       _to != null;
 
   int get activeFilterCount => [
-        _search.isEmpty ? null : _search,
-        _orderStatus,
-        _paymentStatus,
-        _deliveryStatus,
-        _completionStatus,
-        _source,
-        _customerId,
-        _from,
-        _to,
-      ].where((value) => value != null).length;
+    _search.isEmpty ? null : _search,
+    _orderStatus,
+    _paymentStatus,
+    _deliveryStatus,
+    _completionStatus,
+    _source,
+    _customerId,
+    _from,
+    _to,
+  ].where((value) => value != null).length;
 
   Future<void> load({bool append = false}) async {
     _loading = true;
@@ -397,9 +477,10 @@ class TransactionRepository extends ChangeNotifier {
 
     try {
       final data = await _api.get('/transactions$query', token: _token);
-      final page = _objectList(data, 'transactions')
-          .map(Transaction.fromJson)
-          .toList(growable: false);
+      final page = _objectList(
+        data,
+        'transactions',
+      ).map(Transaction.fromJson).toList(growable: false);
       _transactions = append ? [..._transactions, ...page] : page;
     } on ApiException catch (error) {
       _error = error.message;
@@ -489,17 +570,21 @@ class TransactionRepository extends ChangeNotifier {
       );
     }
 
-    final data = await _api.post('/transactions', token: _token, body: {
-      'items': items.map((item) => item.toJson()).toList(),
-      'customer_id': customerId,
-      'discount_kobo': discountKobo,
-      'delivery_fee_kobo': deliveryFeeKobo,
-      'delivery_required': deliveryRequired,
-      'delivery_address': _blankToNull(deliveryAddress),
-      'notes': _blankToNull(notes),
-      // Only manual sales exist until Phase 14 wires WhatsApp in.
-      'source': 'manual',
-    });
+    final data = await _api.post(
+      '/transactions',
+      token: _token,
+      body: {
+        'items': items.map((item) => item.toJson()).toList(),
+        'customer_id': customerId,
+        'discount_kobo': discountKobo,
+        'delivery_fee_kobo': deliveryFeeKobo,
+        'delivery_required': deliveryRequired,
+        'delivery_address': _blankToNull(deliveryAddress),
+        'notes': _blankToNull(notes),
+        // Only manual sales exist until Phase 14 wires WhatsApp in.
+        'source': 'manual',
+      },
+    );
 
     _offset = 0;
     await load();
@@ -510,7 +595,7 @@ class TransactionRepository extends ChangeNotifier {
         502,
         'malformed_response',
         'The sale was saved but the server sent an unreadable response. '
-        'Check your transactions list before recording it again.',
+            'Check your transactions list before recording it again.',
       );
     }
 
@@ -518,7 +603,10 @@ class TransactionRepository extends ChangeNotifier {
     // straight to the detail screen with a complete transaction.
     final created = Transaction.fromJson(
       payload,
-      items: _objectList(payload, 'items').map(TransactionItem.fromJson).toList(),
+      items: _objectList(
+        payload,
+        'items',
+      ).map(TransactionItem.fromJson).toList(),
     );
 
     // Opening the detail also fetches the Phase 8 timeline. A failure here must
@@ -536,7 +624,10 @@ class TransactionRepository extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _api.get('/transactions/$id', token: _token) as Map<String, dynamic>;
+      final data = await _api.get(
+        '/transactions/$id',
+        token: _token,
+      ) as Map<String, dynamic>;
       final payload = data['transaction'];
       if (payload is! Map<String, dynamic>) {
         _detailError = 'The server did not return that transaction.';
@@ -546,14 +637,22 @@ class TransactionRepository extends ChangeNotifier {
       final customer = data['customer'];
       _detail = Transaction.fromJson(
         payload,
-        items: _objectList(payload, 'items').map(TransactionItem.fromJson).toList(),
-        history:
-            _objectList(data, 'history').map(StatusHistoryEntry.fromJson).toList(),
+        items: _objectList(
+          payload,
+          'items',
+        ).map(TransactionItem.fromJson).toList(),
+        history: _objectList(
+          data,
+          'history',
+        ).map(StatusHistoryEntry.fromJson).toList(),
         customerName: customer is Map<String, dynamic>
             ? customer['name'] as String?
             : null,
         customerPhone: customer is Map<String, dynamic>
             ? customer['phone'] as String?
+            : null,
+        customerEmail: customer is Map<String, dynamic>
+            ? customer['email'] as String?
             : null,
       );
     } on ApiException catch (error) {
@@ -579,7 +678,10 @@ class TransactionRepository extends ChangeNotifier {
   /// Returns an empty list when the axis is frozen — a cancelled order can only
   /// ever be refunded, so it offers exactly one action rather than the full set
   /// of values the API would reject.
-  List<String> availableTransitions(Transaction transaction, TransactionAxis axis) {
+  List<String> availableTransitions(
+    Transaction transaction,
+    TransactionAxis axis,
+  ) {
     final wire = axis.wire;
     final current = transaction.valueFor(axis);
 
@@ -603,7 +705,9 @@ class TransactionRepository extends ChangeNotifier {
     // that payment settled and delivery finished in the same request. Offering
     // the button before that is true would invite the owner into a rejection,
     // which is exactly what this table exists to prevent.
-    if (wire == 'completion' && current == 'open' && !_completionUnlocked(transaction)) {
+    if (wire == 'completion' &&
+        current == 'open' &&
+        !_completionUnlocked(transaction)) {
       return const [];
     }
 
@@ -621,13 +725,19 @@ class TransactionRepository extends ChangeNotifier {
   bool get canCompleteNow {
     final txn = _detail;
     if (txn == null) return false;
-    return availableTransitions(txn, TransactionAxis.completion).contains('completed');
+    return availableTransitions(
+      txn,
+      TransactionAxis.completion,
+    ).contains('completed');
   }
 
   /// Phase 7 write. Any subset of the axes may move; the server decides whether
   /// the combination is legal. A note alone is allowed — a staff member
   /// annotates a sale without moving it.
-  Future<Transaction?> updateStatuses(Map<String, String> changes, {String? note}) async {
+  Future<Transaction?> updateStatuses(
+    Map<String, String> changes, {
+    String? note,
+  }) async {
     final hasNote = note != null && note.trim().isNotEmpty;
     if (changes.isEmpty && !hasNote) return _detail;
 
@@ -640,8 +750,9 @@ class TransactionRepository extends ChangeNotifier {
       body: body,
     );
 
-    final updated =
-        Transaction.fromJson((data as Map<String, dynamic>)['transaction'] as Map<String, dynamic>);
+    final updated = Transaction.fromJson(
+      (data as Map<String, dynamic>)['transaction'] as Map<String, dynamic>,
+    );
 
     // The list still shows this row with the old status, so patch it in place
     // rather than making the owner pull to refresh after every tap.
@@ -654,6 +765,44 @@ class TransactionRepository extends ChangeNotifier {
     return _detail;
   }
 
+  /// Emails a paid digital order and hands back the buyer's public link.
+  ///
+  /// The server refuses an unpaid sale, so the caller should only offer this
+  /// once payment is confirmed. A provider outage still returns the link; the
+  /// result's `emailSent` says whether the mail really went out.
+  Future<DigitalDeliveryResult> deliverDigital({String? email}) async {
+    final id = _detail?.id;
+    if (id == null) {
+      throw ApiException(
+        400,
+        'no_transaction',
+        'Open the sale before delivering it.',
+      );
+    }
+
+    final data = await _api.post(
+      '/transactions/$id/deliver',
+      token: _token,
+      body: {
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      },
+    );
+
+    // The delivery stamps the email and timestamp on the sale, so re-read the
+    // detail rather than leaving the card showing stale "not sent" text.
+    await loadDetail(id);
+    notifyListeners();
+
+    if (data is! Map<String, dynamic>) {
+      throw ApiException(
+        502,
+        'malformed_response',
+        'The order was sent but the server sent an unreadable response.',
+      );
+    }
+    return DigitalDeliveryResult.fromJson(data);
+  }
+
   static String? _blankToNull(String? value) {
     if (value == null) return null;
     final trimmed = value.trim();
@@ -663,7 +812,11 @@ class TransactionRepository extends ChangeNotifier {
   String get _token {
     final session = _auth.session;
     if (session == null) {
-      throw ApiException(401, 'unauthorized', 'You need to sign in to continue.');
+      throw ApiException(
+        401,
+        'unauthorized',
+        'You need to sign in to continue.',
+      );
     }
     return session.accessToken;
   }

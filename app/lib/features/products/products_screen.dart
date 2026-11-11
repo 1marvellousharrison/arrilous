@@ -679,7 +679,9 @@ class _ProductTile extends StatelessWidget {
               child: Icon(
                 warning
                     ? Icons.warning_amber_rounded
-                    : Icons.inventory_2_outlined,
+                    : product.isDigital
+                        ? Icons.cloud_download_outlined
+                        : Icons.inventory_2_outlined,
                 color: warning ? AppColors.danger : theme.colorScheme.primary,
                 size: 22,
               ),
@@ -705,6 +707,13 @@ class _ProductTile extends StatelessWidget {
                         const StatusPill(
                           label: 'Archived',
                           color: AppColors.lightTextMuted,
+                        ),
+                      ],
+                      if (product.isDigital) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        const StatusPill(
+                          label: 'Digital',
+                          color: AppColors.info,
                         ),
                       ],
                     ],
@@ -736,7 +745,7 @@ class _ProductTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (!readOnly && product.active)
+            if (!readOnly && product.active && !product.isDigital)
               IconButton(
                 tooltip: 'Add stock',
                 onPressed: onRestock,
@@ -766,11 +775,13 @@ class _StockLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final (String label, Color color) = switch (product) {
-      Product(isOutOfStock: true) => ('Out of stock', AppColors.danger),
-      Product(isLowStock: true) => ('${product.stockQuantity} left', AppColors.warning),
-      _ => ('${product.stockQuantity} in stock', theme.colorScheme.onSurface),
-    };
+    final (String label, Color color) = product.isDigital
+        ? ('Unlimited · digital', AppColors.info)
+        : switch (product) {
+            Product(isOutOfStock: true) => ('Out of stock', AppColors.danger),
+            Product(isLowStock: true) => ('${product.stockQuantity} left', AppColors.warning),
+            _ => ('${product.stockQuantity} in stock', theme.colorScheme.onSurface),
+          };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -781,7 +792,10 @@ class _StockLabel extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (product.isOutOfStock || product.isLowStock) ...[
+          if (product.isDigital) ...[
+            Icon(Icons.cloud_download_outlined, size: 13, color: color),
+            const SizedBox(width: 3),
+          ] else if (product.isOutOfStock || product.isLowStock) ...[
             Icon(
               product.isOutOfStock
                   ? Icons.error_outline

@@ -67,4 +67,33 @@ export const emailService = {
     });
     return { delivered: true, dev: false };
   },
+
+  /**
+   * Sends a paid digital order. Unlike the edit code this never throws for a
+   * missing provider: the route still has the buyer's public link to hand back,
+   * and telling the owner it was sent when it was not would be a lie.
+   */
+  async sendDigitalDelivery({ to, businessName, transactionNumber, items, url }) {
+    const names = items.map((item) => `• ${item.name}`).join('\n');
+    const text =
+      `Thank you for your order from ${businessName}.\n\n` +
+      `Sale ${transactionNumber}\n${names}\n\n` +
+      `Open your download page:\n${url}\n\n` +
+      'Keep this link private — anyone with it can download your files. ' +
+      'If payment has not been confirmed yet, ask the seller before trying again.';
+
+    if (!this.configured) {
+      if (!config.isProd) {
+        console.log(`[email:dev] digital delivery for ${to}: ${url}`);
+        return { delivered: false, dev: true };
+      }
+      return { delivered: false, configured: false };
+    }
+    await sendViaResend({
+      to,
+      subject: `Your download from ${businessName}`,
+      text,
+    });
+    return { delivered: true, dev: false };
+  },
 };
