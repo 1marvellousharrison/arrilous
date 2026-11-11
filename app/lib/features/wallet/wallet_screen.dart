@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/state/wallet_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../core/api/wallet_models.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -119,9 +119,8 @@ class _VirtualAccountCardState extends State<_VirtualAccountCard> {
     }
   }
 
-  void _copy(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+  Future<void> _copy(String text) async {
+    await copyWithFeedback(context, text, successMessage: 'Copied');
   }
 
   @override

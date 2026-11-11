@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/auth_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../widgets/common.dart';
 
 /// Phone/email code confirmation. The code is generated and validated by the
@@ -180,10 +180,11 @@ class _DevCodeNotice extends StatelessWidget {
             color: AppColors.warning,
             tooltip: 'Copy code',
             onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: code));
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Code copied')),
+              await copyWithFeedback(
+                context,
+                code,
+                successMessage: 'Code copied',
+                fallbackTitle: 'Copy the code',
               );
             },
           ),

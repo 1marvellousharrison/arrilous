@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/business_repository.dart';
 import '../../core/state/dashboard_repository.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../core/utils/money.dart';
 import '../../widgets/common.dart';
 import '../../widgets/status.dart';
@@ -81,12 +81,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         _StaffRange.allTime => 'All time',
       };
 
-  void _copyCode(String code) {
+  Future<void> _copyCode(String code) async {
     if (code.isEmpty) return;
-    Clipboard.setData(ClipboardData(text: code));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Code copied.')),
-    );
+    await copyWithFeedback(context, code, successMessage: 'Code copied.');
   }
 
   @override

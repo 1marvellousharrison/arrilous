@@ -14,6 +14,7 @@ import 'package:dee_app/features/transactions/transaction_detail_screen.dart';
 import 'package:dee_app/features/transactions/transactions_screen.dart';
 import 'package:dee_app/widgets/common.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -993,6 +994,39 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    const digitalUrl = 'https://api.example.com/api/v1/public/sales/token-1';
+
+    /// A paid digital sale: the state in which the download link is copyable.
+    Future<TransactionRepository> paidDigitalTransactions() async {
+      final repos = await signInOwner((request) async {
+        if (request.url.path.endsWith('/transactions/txn-1')) {
+          return json({
+            'transaction': {
+              ...transactionJson(paymentStatus: 'paid'),
+              'publicToken': 'token-1',
+              'publicUrl': digitalUrl,
+              'items': [
+                {
+                  'id': 'item-1',
+                  'transactionId': 'txn-1',
+                  'productId': 'product-1',
+                  'name': 'E-book',
+                  'quantity': 1,
+                  'unitPriceKobo': 500_000,
+                  'subtotalKobo': 500_000,
+                  'isDigital': true,
+                },
+              ],
+            },
+            'customer': null,
+            'history': <Object>[],
+          });
+        }
+        return json({'transactions': <Object>[]});
+      });
+      return repos.transactions;
+    }
+
     testWidgets('shows the money, the items and the timeline', (tester) async {
       useTallSurface(tester);
       const png =
@@ -1253,6 +1287,64 @@ void main() {
       );
       expect(jsonDecode(post.body)['email'], 'buyer@example.com');
       expect(find.text('Sent to buyer@example.com.'), findsOneWidget);
+    });
+
+    testWidgets('copies a paid download link and confirms it', (tester) async {
+      useTallSurface(tester);
+      String? copied;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+
+      await pumpDetail(tester, await paidDigitalTransactions());
+
+      await tester.tap(find.byTooltip('Copy link'));
+      await tester.pumpAndSettle();
+
+      expect(copied, digitalUrl);
+      expect(find.text('Download link copied.'), findsOneWidget);
+    });
+
+    testWidgets('offers a manual copy when the clipboard is blocked',
+        (tester) async {
+      useTallSurface(tester);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          throw PlatformException(code: 'clipboard_unavailable');
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+
+      await pumpDetail(tester, await paidDigitalTransactions());
+
+      await tester.tap(find.byTooltip('Copy link'));
+      await tester.pumpAndSettle();
+
+      // The app must not pretend the copy worked; it hands over the link.
+      expect(find.text('Download link copied.'), findsNothing);
+      expect(find.text('Copy the download link'), findsOneWidget);
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(field.readOnly, isTrue);
+      expect(field.controller!.text, digitalUrl);
+      expect(field.controller!.selection.baseOffset, 0);
     });
 
     testWidgets('an unpaid digital sale keeps its page locked', (tester) async {

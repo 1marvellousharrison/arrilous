@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/staff_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../core/utils/phone.dart';
 import '../../widgets/common.dart';
 import '../../widgets/phone_field.dart';
@@ -179,9 +179,10 @@ class _StaffTile extends StatelessWidget {
                       IconButton(
                         tooltip: 'Copy code',
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: member.staffCode));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Code copied.')),
+                          copyWithFeedback(
+                            context,
+                            member.staffCode,
+                            successMessage: 'Code copied.',
                           );
                         },
                         icon: const Icon(Icons.copy, size: 14),
@@ -401,9 +402,10 @@ class _StaffCodeDialog extends StatelessWidget {
       actions: [
         TextButton.icon(
           onPressed: () {
-            Clipboard.setData(ClipboardData(text: member.staffCode));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Code copied.')),
+            copyWithFeedback(
+              context,
+              member.staffCode,
+              successMessage: 'Code copied.',
             );
           },
           icon: const Icon(Icons.copy, size: 18),

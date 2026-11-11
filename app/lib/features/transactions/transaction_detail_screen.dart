@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../core/utils/money.dart';
 import '../../widgets/common.dart';
 import '../../widgets/status.dart';
@@ -493,10 +493,16 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _copyLink(String url) async {
-    await Clipboard.setData(ClipboardData(text: url));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Download link copied.')));
+    await copyWithFeedback(
+      context,
+      url,
+      successMessage: 'Download link copied.',
+      fallbackTitle: 'Copy the download link',
+      fallbackHelp:
+          'Your browser did not let the app use the clipboard. The link is '
+          'selected below, so you can copy it with Ctrl+C, \u2318C, or your '
+          "device's copy menu and send it to the buyer yourself.",
+    );
   }
 
   Future<void> _sendDigital(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/state/staff_repository.dart';
 import '../../core/state/transaction_repository.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/copy_feedback.dart';
 import '../../core/utils/money.dart';
 import '../../widgets/common.dart';
 import '../../widgets/status.dart';
@@ -95,10 +95,11 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
     }
   }
 
-  void _copyCode() {
-    Clipboard.setData(ClipboardData(text: _member.staffCode));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Code copied.')),
+  Future<void> _copyCode() async {
+    await copyWithFeedback(
+      context,
+      _member.staffCode,
+      successMessage: 'Code copied.',
     );
   }
 
