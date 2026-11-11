@@ -173,6 +173,23 @@ void main() {
         reason: 'the old alert is outside the selected window');
   });
 
+  test('a new session clears the previous account\'s inbox', () async {
+    final log = <http.Request>[];
+    final repos = await setUpRepos(log, unread: true);
+
+    await repos.app.load();
+    expect(repos.app.notifications, isNotEmpty);
+    expect(repos.app.unreadCount, 1);
+
+    // Handing the device to a colleague must not leave the first account's
+    // alerts on screen while the new inbox loads.
+    repos.app.updateToken('access-token-2');
+
+    expect(repos.app.notifications, isEmpty);
+    expect(repos.app.unreadCount, 0);
+    expect(repos.app.lowStockProducts, isEmpty);
+  });
+
   test('load reads the unread breakdown and the low-stock products', () async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((request) async {

@@ -22,8 +22,14 @@ class AppNotificationsRepository extends ChangeNotifier {
   int warningCount = 0;
   List<LowStockProduct> lowStockProducts = const [];
 
+  /// A different session means a different inbox. Clearing on a token change
+  /// keeps the previous account's rows off the screen while the new inbox
+  /// loads, which matters on a shared device where one person signs out and a
+  /// colleague signs in without a reload.
   void updateToken(String? token) {
+    if (token == _token) return;
     _token = token;
+    reset();
   }
 
   bool get hasLowStock => lowStockCount > 0;

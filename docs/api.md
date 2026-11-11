@@ -707,15 +707,19 @@ by month for the wider windows).
 - `user_id = <id>` — a message for that one user (their own drafts and uploads);
 - `actor_user_id` — who caused the event, so the owner can see "by Musa".
 
-A staff inbox is `user_id IS NULL` plus rows where `user_id` is their own. The
-owner is the business and sees every row, including staff-only draft alerts.
-Read and read-all enforce the same scope: a staff member cannot clear another
-person's message. The response gains `actorUserId`/`actorName` on rows that have
+A staff inbox holds only rows where `user_id` is their own; the business-wide
+rows (`user_id IS NULL`) belong to the owner. The owner is the business and sees
+every row in their inbox, including staff-only draft alerts. Read and read-all
+enforce the same scope: a staff member cannot clear another person's message,
+and opening their own inbox no longer marks the owner's alerts read. The response gains `actorUserId`/`actorName` on rows that have
 an author.
 
 `GET /notifications` also self-heals the shelf: it raises one open alert per low
 product and resolves an alert whose product has been restocked, archived or
-deleted. The response looks like:
+deleted. The `lowStock` summary (and `counts.lowStock`) stays shop-wide for the
+owner and staff alike — it describes the shelf, not a personal message — while
+the `low_stock` inbox rows themselves belong to the owner. The response looks
+like:
 
 ```jsonc
 {

@@ -139,6 +139,29 @@ void main() {
     expect(find.text('No matches'), findsOneWidget);
   });
 
+  testWidgets('a different session clears the previous chat and drafts', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/auth/login')) return session();
+      if (request.url.path.endsWith('/ai/chat')) {
+        return json(chatBody(importId: 'imp-1'));
+      }
+      if (request.url.path.endsWith('/ai/imports')) {
+        return json({'imports': [importBody(id: 'imp-1')]});
+      }
+      return json(<String, Object>{});
+    });
+
+    final ai = await pumpChat(tester, client);
+    expect(ai.messages, isNotEmpty);
+    expect(ai.imports, isNotEmpty);
+
+    ai.updateToken('access-token-2');
+    await tester.pumpAndSettle();
+
+    expect(ai.messages, isEmpty, reason: 'the next person must not see this chat');
+    expect(ai.imports, isEmpty, reason: 'nor the previous drafts');
+  });
+
   testWidgets('deletes a draft that has not become a sale', (tester) async {
     var deleted = false;
     final client = MockClient((request) async {

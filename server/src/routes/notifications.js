@@ -28,13 +28,15 @@ function inboxLimit(value) {
 /**
  * Audience rules.
  *
- * `user_id IS NULL` is business-wide news; a user id is a message for that one
- * person. A staff member sees business-wide rows plus their own. The owner is
- * the business: they see every row, including staff-only draft alerts.
+ * `user_id IS NULL` is business-wide news for the owner. A user id is a message
+ * for that one person. The two never mix: an owner's sale, a payment update or
+ * a shelf warning belongs to the owner's inbox, while a staff member's inbox
+ * holds only the rows addressed to that staff member. Sharing the business-wide
+ * rows put the owner's activity in every staff bell, which is not their mail.
  */
 function audience(req) {
   return req.staff
-    ? { clause: ' AND (n.user_id IS NULL OR n.user_id = ?)', params: [req.staff.user_id] }
+    ? { clause: ' AND n.user_id = ?', params: [req.staff.user_id] }
     : { clause: '', params: [] };
 }
 
@@ -81,8 +83,7 @@ notificationsRouter.patch('/:id/read', async (req, res) => {
     await run(
       `UPDATE notifications
           SET read_at = ?
-        WHERE id = ? AND business_id = ?
-          AND (user_id IS NULL OR user_id = ?)`,
+        WHERE id = ? AND business_id = ? AND user_id = ?`,
       now(),
       req.params.id,
       req.business.id,
@@ -116,9 +117,7 @@ notificationsRouter.post('/read-all', async (req, res) => {
   const importantClause = includeImportant
     ? ''
     : " AND type <> 'low_stock' AND severity <> 'error'";
-  const scope = req.staff
-    ? ' AND (user_id IS NULL OR user_id = ?)'
-    : '';
+  const scope = req.staff ? ' AND user_id = ?' : '';
   await run(
     `UPDATE notifications
         SET read_at = ?

@@ -21,8 +21,17 @@ class AiRepository extends ChangeNotifier {
   /// silently showing an empty chat.
   String? error;
 
+  /// A different session means a different conversation. Clearing on a token
+  /// change stops one person's chat and drafts from being shown to the next
+  /// person who signs in on the same device.
   void updateToken(String? token) {
+    if (token == _token) return;
     _token = token;
+    messages = const [];
+    imports = const [];
+    loading = false;
+    error = null;
+    notifyListeners();
   }
 
   Future<void> loadAll() async {

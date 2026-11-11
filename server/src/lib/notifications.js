@@ -139,10 +139,11 @@ export async function syncLowStockNotifications(businessId) {
 /// A single app alert. Errors and order-draft warnings use the same path so the
 /// inbox has one shape no matter which part of the app raised it.
 ///
-/// `userId` is the audience: NULL reaches everyone in the business, a user id
-/// reaches only that person (the owner still sees all business rows).
+/// `userId` is the audience: NULL is business news for the owner, a user id
+/// is a private message for that one person. A staff member's inbox holds only
+/// their own rows, so a shared alert can never appear in it.
 /// `actorUserId` is a different question — who caused the event — so a sale a
-/// staff member records can be business-wide news that still names them.
+/// staff member records can be the owner's news that still names them.
 export async function addAppNotification({
   businessId,
   userId = null,

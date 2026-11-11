@@ -191,7 +191,7 @@ describe('low-stock alerts', () => {
     assert.ok(cleared.body.notifications.find((n) => n.id === alert.id).readAt);
   });
 
-  test('staff see the same business-wide stock warning', async () => {
+  test('staff still see the shop-wide shelf warning, but not the owner\'s alert row', async () => {
     const owner = await createBusinessOwner('Team Shelf');
     const token = await staffSession(owner);
     await addProduct(owner, { name: 'Bread', stock_quantity: 2 });
@@ -200,6 +200,10 @@ describe('low-stock alerts', () => {
     assert.equal(inbox.status, 200, JSON.stringify(inbox.body));
     assert.equal(inbox.body.counts.lowStock, 1);
     assert.equal(inbox.body.lowStock.products[0].name, 'Bread');
+    assert.ok(
+      !inbox.body.notifications.some((n) => n.type === 'low_stock'),
+      'the low-stock row belongs to the owner\'s inbox'
+    );
 
     const summary = await api('GET', '/dashboard/summary', { token });
     assert.equal(summary.body.lowStock.count, 1);

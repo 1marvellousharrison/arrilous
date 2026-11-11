@@ -98,7 +98,7 @@ describe('business event notifications', () => {
     assert.equal(event.readAt, null);
   });
 
-  test('a staff sale reaches the owner, names the staff, and is visible to them', async () => {
+  test('a staff sale reaches the owner, names the staff, and stays out of the staff inbox', async () => {
     const owner = await createBusinessOwner('Team Sales Store');
     const staff = await staffSession(owner);
 
@@ -120,8 +120,8 @@ describe('business event notifications', () => {
 
     const staffInbox = await inbox(staff.token);
     assert.ok(
-      staffInbox.notifications.some((n) => n.id === event.id),
-      'the staff sees the business-wide sale they caused'
+      !staffInbox.notifications.some((n) => n.id === event.id),
+      'business-wide sale news belongs to the owner, not the staff bell'
     );
 
     const activity = await api('GET', `/staff/${staff.staff.id}/notifications`, {
@@ -193,6 +193,10 @@ describe('business event notifications', () => {
       userId: owner.userId,
       title: 'Owner only',
     });
+    const broadcast = await insertNotification({
+      businessId: owner.business.id,
+      title: 'Shop news',
+    });
     const forFirst = await insertNotification({
       businessId: owner.business.id,
       userId: first.userId,
@@ -205,12 +209,18 @@ describe('business event notifications', () => {
       !firstInbox.notifications.some((n) => n.id === personal),
       'another user\'s message is not in this staff inbox'
     );
+    assert.ok(
+      !firstInbox.notifications.some((n) => n.id === broadcast),
+      'business-wide news belongs to the owner, not the staff bell'
+    );
 
     const secondInbox = await inbox(second.token);
     assert.ok(!secondInbox.notifications.some((n) => n.id === forFirst));
+    assert.ok(!secondInbox.notifications.some((n) => n.id === broadcast));
 
     const ownerInbox = await inbox(owner.token);
     assert.ok(ownerInbox.notifications.some((n) => n.id === personal));
+    assert.ok(ownerInbox.notifications.some((n) => n.id === broadcast));
     assert.ok(ownerInbox.notifications.some((n) => n.id === forFirst));
   });
 
@@ -222,6 +232,15 @@ describe('business event notifications', () => {
       userId: owner.userId,
       title: 'Keep me',
     });
+    const broadcast = await insertNotification({
+      businessId: owner.business.id,
+      title: 'Shop news',
+    });
+    const mine = await insertNotification({
+      businessId: owner.business.id,
+      userId: staff.userId,
+      title: 'Mine to clear',
+    });
 
     const cleared = await api('POST', '/notifications/read-all', {
       token: staff.token,
@@ -229,11 +248,27 @@ describe('business event notifications', () => {
     });
     assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
 
-    const row = await queryOne(
+    const ownerRow = await queryOne(
       'SELECT read_at FROM notifications WHERE id = ?',
       personal
     );
-    assert.equal(row.read_at, null);
+    assert.equal(ownerRow.read_at, null, 'the owner\'s own alert survives');
+
+    const broadcastRow = await queryOne(
+      'SELECT read_at FROM notifications WHERE id = ?',
+      broadcast
+    );
+    assert.equal(
+      broadcastRow.read_at,
+      null,
+      'a staff inbox does not clear the owner\'s business news'
+    );
+
+    const mineRow = await queryOne(
+      'SELECT read_at FROM notifications WHERE id = ?',
+      mine
+    );
+    assert.ok(mineRow.read_at, 'the staff still clears their own alert');
   });
 });
 
