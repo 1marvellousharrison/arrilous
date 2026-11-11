@@ -145,6 +145,12 @@ void main() {
           'week': period(count: 4, gross: 5_000_000, collected: 2_000_000, outstanding: 3_000_000),
           'month': period(count: 6, gross: 9_000_000, collected: 4_000_000, outstanding: 5_000_000),
           'allTime': period(count: 8, gross: 12_000_000, collected: 6_000_000, outstanding: 6_000_000),
+          'months': [
+            {
+              'key': '2026-09',
+              ...period(count: 5, gross: 7_000_000, collected: 3_000_000, outstanding: 4_000_000),
+            },
+          ],
         },
         'topProducts': [
           {'name': 'Blue Bag', 'quantity': 4, 'revenueKobo': 6_000_000},
@@ -233,7 +239,8 @@ void main() {
     expect(find.text('Musa'), findsOneWidget);
     expect(find.text('ABC47-03'), findsOneWidget);
     expect(find.text('Active'), findsOneWidget);
-    expect(find.text('Today'), findsWidgets);
+    expect(find.text("Today's sales"), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget, reason: 'the picker wears the current window');
     expect(find.text('₦30,000.00'), findsWidgets);
     expect(find.text('2 sales'), findsOneWidget);
 
@@ -251,18 +258,32 @@ void main() {
     await pumpDashboard(tester, dashboard, business, auth);
 
     expect(find.text('₦30,000.00'), findsWidgets);
+    expect(find.text('All'), findsNothing, reason: 'all-time is not offered');
 
-    await tester.tap(find.text('7 days'));
+    // The windows live behind the pill beside the title, as on the owner's
+    // dashboard.
+    await tester.tap(find.byIcon(Icons.expand_more_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('7 days').last);
     await tester.pumpAndSettle();
     expect(find.text('Last 7 days'), findsOneWidget);
     expect(find.text('4 sales'), findsOneWidget);
 
-    expect(find.text('All'), findsNothing, reason: 'all-time is no longer offered');
-
-    await tester.tap(find.text('Month'));
+    await tester.tap(find.byIcon(Icons.expand_more_rounded));
     await tester.pumpAndSettle();
-    expect(find.text('This month'), findsOneWidget);
+    await tester.tap(find.text('This month').last);
+    await tester.pumpAndSettle();
+    expect(find.text('This month'), findsNWidgets(2), reason: 'heading and picker');
     expect(find.text('6 sales'), findsOneWidget);
+
+    // Earlier months with live sales are offered by name.
+    await tester.tap(find.byIcon(Icons.expand_more_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Earlier months'), findsOneWidget);
+    await tester.tap(find.text('September 2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('September 2026'), findsNWidgets(2));
+    expect(find.text('5 sales'), findsOneWidget);
   });
 
   testWidgets('copies the staff code from their home', (tester) async {

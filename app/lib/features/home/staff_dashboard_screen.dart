@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/copy_feedback.dart';
 import '../../core/utils/money.dart';
 import '../../widgets/common.dart';
+import '../../widgets/sales_period_picker.dart';
 import '../../widgets/status.dart';
 
 /// The staff member's own home.
@@ -51,33 +52,14 @@ class StaffDashboardScreen extends StatefulWidget {
   State<StaffDashboardScreen> createState() => _StaffDashboardScreenState();
 }
 
-/// The three windows on the staff member's own sales.
-enum _StaffRange { today, week, month }
-
 class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
-  _StaffRange _range = _StaffRange.today;
+  String _windowId = 'today';
 
   @override
   void initState() {
     super.initState();
     if (!widget.dashboard.loaded) widget.dashboard.load();
   }
-
-  SalesPeriodTotals _totals(DashboardSummary? summary) {
-    final periods = summary?.periods;
-    if (periods == null) return SalesPeriodTotals.empty;
-    return switch (_range) {
-      _StaffRange.today => periods.today,
-      _StaffRange.week => periods.week,
-      _StaffRange.month => periods.month,
-    };
-  }
-
-  String get _rangeLabel => switch (_range) {
-        _StaffRange.today => 'Today',
-        _StaffRange.week => 'Last 7 days',
-        _StaffRange.month => 'This month',
-      };
 
   Future<void> _copyCode(String code) async {
     if (code.isEmpty) return;
@@ -397,11 +379,12 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     );
   }
 
-  /// The staff member's own money, with the range switch right above the
-  /// figure it changes.
+  /// The staff member's own money, with the period menu beside the title.
   Widget _moneyCard(DashboardSummary? summary) {
     final theme = Theme.of(context);
-    final totals = _totals(summary);
+    final windows = salesWindows(summary);
+    final window = selectedSalesWindow(windows, _windowId);
+    final totals = window.totals;
     final loading = widget.dashboard.loading && summary == null;
 
     if (loading) {
@@ -436,36 +419,28 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
+          Row(
             children: [
-              for (final range in _StaffRange.values)
-                ChoiceChip(
-                  label: Text(
-                    switch (range) {
-                      _StaffRange.today => 'Today',
-                      _StaffRange.week => '7 days',
-                      _StaffRange.month => 'Month',
-                    },
+              Expanded(
+                child: Text(
+                  window.heading,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                   ),
-                  selected: _range == range,
-                  onSelected: (_) => setState(() => _range = range),
-                  showCheckmark: false,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              SalesPeriodPicker(
+                windows: windows,
+                selected: window,
+                onSelected: (next) => setState(() => _windowId = next.id),
+              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            _rangeLabel,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
