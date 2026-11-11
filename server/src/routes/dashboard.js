@@ -24,10 +24,12 @@ export const dashboardRouter = express.Router();
 const NOT_CANCELLED = "business_id = ? AND order_status <> 'cancelled'";
 
 /**
- * The money for one staff member since a moment in time. Cancelled sales are
- * excluded for the same reason as the headline totals: they did not happen.
+ * The money since a moment in time, scoped to the whole business for its owner
+ * or to one staff member's own sales. Cancelled sales are excluded for the same
+ * reason as the headline totals: they did not happen.
  */
-async function staffTotalsSince(businessId, staffId, since) {
+async function totalsSince(businessId, staffId, since) {
+  const scopeSql = staffId ? ' AND created_by_user_id = ?' : '';
   const row = await queryOne(
     `SELECT
         COUNT(*)                        AS "transactionCount",
@@ -37,10 +39,10 @@ async function staffTotalsSince(businessId, staffId, since) {
         COALESCE(SUM(CASE WHEN payment_status IN ('unpaid', 'payment_pending')
                           THEN total_kobo ELSE 0 END), 0) AS "outstandingKobo"
        FROM transactions
-      WHERE business_id = ? AND created_by_user_id = ?
+      WHERE business_id = ?${scopeSql}
         AND order_status <> 'cancelled' AND created_at >= ?`,
     businessId,
-    staffId,
+    ...(staffId ? [staffId] : []),
     since
   );
 
@@ -53,11 +55,11 @@ async function staffTotalsSince(businessId, staffId, since) {
 }
 
 /**
- * The staff dashboard's periods, in the caller's own day. A sale at 00:30 in
+ * The home dashboard's periods, in the caller's own day. A sale at 00:30 in
  * Lagos must count as today even though the server stores UTC, so the client
  * sends its offset and the boundaries are shifted back to UTC here.
  */
-async function staffPeriods(businessId, staffId, allTime, tzOffsetMinutes) {
+async function periodsFor(businessId, staffId, allTime, tzOffsetMinutes) {
   const offsetMs = tzOffsetMinutes * 60_000;
   const localNow = new Date(Date.now() + offsetMs);
   const todayStartLocal = Date.UTC(
@@ -69,13 +71,13 @@ async function staffPeriods(businessId, staffId, allTime, tzOffsetMinutes) {
   const asUtc = (localMs) => new Date(localMs - offsetMs).toISOString();
 
   return {
-    today: await staffTotalsSince(businessId, staffId, asUtc(todayStartLocal)),
-    week: await staffTotalsSince(
+    today: await totalsSince(businessId, staffId, asUtc(todayStartLocal)),
+    week: await totalsSince(
       businessId,
       staffId,
       asUtc(todayStartLocal - 6 * 86_400_000)
     ),
-    month: await staffTotalsSince(businessId, staffId, asUtc(monthStartLocal)),
+    month: await totalsSince(businessId, staffId, asUtc(monthStartLocal)),
     allTime,
   };
 }
@@ -105,6 +107,20 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
       WHERE ${NOT_CANCELLED}${scopeSql}`,
     ...scopeParams
   );
+
+  // The owner and staff home both carry today / last 7 days / this month. The
+  // owner's windows cover the whole business; a staff member's cover their own
+  // sales. All-time is the headline total the screen already has.
+  const allTime = {
+    transactionCount: money?.transactionCount ?? 0,
+    grossSalesKobo: money?.grossSalesKobo ?? 0,
+    collectedKobo: money?.collectedKobo ?? 0,
+    outstandingKobo: money?.outstandingKobo ?? 0,
+  };
+  const rawOffset = Number.parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffsetMinutes =
+    Number.isFinite(rawOffset) && Math.abs(rawOffset) <= 14 * 60 ? rawOffset : 0;
+  const periods = await periodsFor(businessId, staffId, allTime, tzOffsetMinutes);
 
   // One pass over the whole table for every state the dashboard reports.
   const counts = await queryOne(
@@ -157,11 +173,10 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
   )).map((row) => publicTransaction(row));
 
   // A staff member's home is their own workspace, not the owner's shop report.
-  // The code, the day/week/month they have had, and the products they move most
-  // all travel with the same summary call so the screen renders in one round
-  // trip. The owner never receives these keys.
+  // The code and the products they move most travel with the same summary call
+  // so the screen renders in one round trip. The owner never receives these
+  // keys. The day/week/month windows above are shared by both homes.
   let staff = null;
-  let periods = null;
   let topProducts = [];
   if (staffId) {
     const profile = await queryOne(
@@ -185,17 +200,6 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
       activatedAt: profile?.activated_at ?? null,
       salesCount: profile?.sales_count ?? 0,
     };
-
-    const allTime = {
-      transactionCount: money?.transactionCount ?? 0,
-      grossSalesKobo: money?.grossSalesKobo ?? 0,
-      collectedKobo: money?.collectedKobo ?? 0,
-      outstandingKobo: money?.outstandingKobo ?? 0,
-    };
-    const rawOffset = Number.parseInt(req.query.tz_offset_minutes, 10);
-    const tzOffsetMinutes =
-      Number.isFinite(rawOffset) && Math.abs(rawOffset) <= 14 * 60 ? rawOffset : 0;
-    periods = await staffPeriods(businessId, staffId, allTime, tzOffsetMinutes);
 
     topProducts = await queryAll(
       `SELECT ti.product_name_snapshot AS name,
@@ -246,10 +250,10 @@ dashboardRouter.get('/summary', requireAuth, requireBusiness, async (req, res) =
     logistics,
     lowStock,
     recent,
+    periods,
     ...(staff
       ? {
           staff,
-          periods,
           topProducts,
         }
       : {}),

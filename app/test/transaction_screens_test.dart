@@ -149,6 +149,26 @@ void main() {
               'failed': 0,
               'cancelled': 1,
             },
+            'periods': {
+              'today': {
+                'transactionCount': 12,
+                'grossSalesKobo': 4_500_000,
+                'collectedKobo': 3_000_000,
+                'outstandingKobo': 1_500_000,
+              },
+              'week': {
+                'transactionCount': 12,
+                'grossSalesKobo': 4_500_000,
+                'collectedKobo': 3_000_000,
+                'outstandingKobo': 1_500_000,
+              },
+              'month': {
+                'transactionCount': 12,
+                'grossSalesKobo': 4_500_000,
+                'collectedKobo': 3_000_000,
+                'outstandingKobo': 1_500_000,
+              },
+            },
             // A distinct amount, so each assertion below identifies one figure rather than
             // matching an unrelated one.
             'recent': [transactionJson(total: 750_000)],
@@ -181,10 +201,10 @@ void main() {
       expect(find.text('₦7,500.00'), findsOneWidget, reason: 'the recent sale');
     });
 
-    /// The home page is a preview, not the archive: seven recent sales, then
-    /// the button into the full list. Nothing beyond the seventh is rendered,
-    /// so the page stays scannable.
-    testWidgets('previews at most seven recent sales before the see-all button', (tester) async {
+    /// The home page is a preview, not the archive: three recent sales, then
+    /// the button into the full list. Nothing beyond the third is rendered, so
+    /// the page stays scannable.
+    testWidgets('previews at most three recent sales before the see-all button', (tester) async {
       useTallSurface(tester);
       final repos = await signInOwner((request) async {
         if (request.url.path.contains('/dashboard/summary')) {
@@ -232,16 +252,154 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      for (var index = 1; index <= 7; index++) {
+      for (var index = 1; index <= 3; index++) {
         expect(
           find.text('TXN-2026-${index.toString().padLeft(5, '0')}'),
           findsOneWidget,
-          reason: 'the first seven recent sales are previewed',
+          reason: 'the first three recent sales are previewed',
         );
       }
-      expect(find.text('TXN-2026-00008'), findsNothing, reason: 'beyond the cap nothing is rendered');
+      expect(find.text('TXN-2026-00004'), findsNothing, reason: 'beyond the cap nothing is rendered');
+      expect(find.text('TXN-2026-00005'), findsNothing);
       expect(find.text('TXN-2026-00009'), findsNothing);
       expect(find.text('See all transactions'), findsOneWidget, reason: 'the full list stays reachable');
+    });
+
+    testWidgets('switches the owner dashboard between today, 7 days and month', (tester) async {
+      useTallSurface(tester);
+      Map<String, Object?> period(int count) => {
+            'transactionCount': count,
+            'grossSalesKobo': count * 100_000,
+            'collectedKobo': 0,
+            'outstandingKobo': count * 100_000,
+          };
+      final repos = await signInOwner((request) async {
+        if (request.url.path.contains('/dashboard/summary')) {
+          return json({
+            'totals': period(20),
+            'counts': {
+              'pendingOrder': 0,
+              'pendingPayment': 0,
+              'awaitingDelivery': 0,
+              'inTransit': 0,
+              'completed': 0,
+              'failed': 0,
+              'cancelled': 0,
+            },
+            'periods': {
+              'today': period(12),
+              'week': period(5),
+              'month': period(8),
+            },
+            'recent': <Object>[],
+          });
+        }
+        return json(<String, Object>{});
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: DashboardScreen(
+          dashboard: repos.dashboard,
+          business: repos.business,
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+          onOpenTransaction: (_) {},
+          onManualEntry: () {},
+          onSeeAllTransactions: () {},
+          onAddProduct: () {},
+          onAddCustomer: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('across 12 transactions'), findsOneWidget);
+      expect(find.text('Today'), findsWidgets);
+      expect(find.text('All'), findsNothing, reason: 'all-time was removed from the switch');
+
+      await tester.tap(find.text('7 days'));
+      await tester.pumpAndSettle();
+      expect(find.text('Last 7 days'), findsOneWidget);
+      expect(find.text('across 5 transactions'), findsOneWidget);
+
+      await tester.tap(find.text('Month'));
+      await tester.pumpAndSettle();
+      expect(find.text('This month'), findsOneWidget);
+      expect(find.text('across 8 transactions'), findsOneWidget);
+    });
+
+    testWidgets('surfaces the owner needs-attention items', (tester) async {
+      useTallSurface(tester);
+      var opened = false;
+      final repos = await signInOwner((request) async {
+        if (request.url.path.contains('/dashboard/summary')) {
+          return json({
+            'totals': {
+              'transactionCount': 5,
+              'grossSalesKobo': 5_000_000,
+              'collectedKobo': 0,
+              'outstandingKobo': 5_000_000,
+            },
+            'counts': {
+              'pendingOrder': 1,
+              'pendingPayment': 2,
+              'awaitingDelivery': 1,
+              'inTransit': 1,
+              'completed': 0,
+              'failed': 1,
+              'cancelled': 0,
+            },
+            'periods': {
+              'today': {
+                'transactionCount': 5,
+                'grossSalesKobo': 5_000_000,
+                'collectedKobo': 0,
+                'outstandingKobo': 5_000_000,
+              },
+              'week': {
+                'transactionCount': 5,
+                'grossSalesKobo': 5_000_000,
+                'collectedKobo': 0,
+                'outstandingKobo': 5_000_000,
+              },
+              'month': {
+                'transactionCount': 5,
+                'grossSalesKobo': 5_000_000,
+                'collectedKobo': 0,
+                'outstandingKobo': 5_000_000,
+              },
+            },
+            'recent': <Object>[],
+          });
+        }
+        return json(<String, Object>{});
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: DashboardScreen(
+          dashboard: repos.dashboard,
+          business: repos.business,
+          transactions: repos.transactions,
+          catalog: repos.catalog,
+          customers: repos.customers,
+          onOpenTransaction: (_) {},
+          onManualEntry: () {},
+          onSeeAllTransactions: () => opened = true,
+          onAddProduct: () {},
+          onAddCustomer: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Needs attention'), findsOneWidget);
+      expect(find.text('Awaiting payment'), findsOneWidget);
+      expect(find.text('To deliver'), findsOneWidget);
+      expect(find.text('On the road'), findsOneWidget);
+      expect(find.text('Failures'), findsOneWidget);
+
+      await tester.tap(find.text('Awaiting payment'));
+      await tester.pumpAndSettle();
+      expect(opened, isTrue, reason: 'the row leads to the sales list');
     });
 
     testWidgets('invites the first sale when nothing has been recorded',

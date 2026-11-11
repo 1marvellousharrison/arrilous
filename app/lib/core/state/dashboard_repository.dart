@@ -288,6 +288,9 @@ class DashboardSummary {
   /// Staff-only. Absent on the owner's summary, which is how the app tells the
   /// two dashboards apart without trusting the client role.
   final StaffSnapshot? staff;
+
+  /// Today / last 7 days / this month for the home dashboard. The owner's
+  /// windows cover the whole business; a staff member's cover their own sales.
   final SalesPeriods? periods;
   final List<ProductLeader> topProducts;
 

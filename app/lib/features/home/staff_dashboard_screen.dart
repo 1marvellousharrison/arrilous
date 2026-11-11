@@ -51,8 +51,8 @@ class StaffDashboardScreen extends StatefulWidget {
   State<StaffDashboardScreen> createState() => _StaffDashboardScreenState();
 }
 
-/// The four windows on the staff member's own sales.
-enum _StaffRange { today, week, month, allTime }
+/// The three windows on the staff member's own sales.
+enum _StaffRange { today, week, month }
 
 class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   _StaffRange _range = _StaffRange.today;
@@ -70,7 +70,6 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       _StaffRange.today => periods.today,
       _StaffRange.week => periods.week,
       _StaffRange.month => periods.month,
-      _StaffRange.allTime => periods.allTime,
     };
   }
 
@@ -78,7 +77,6 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         _StaffRange.today => 'Today',
         _StaffRange.week => 'Last 7 days',
         _StaffRange.month => 'This month',
-        _StaffRange.allTime => 'All time',
       };
 
   Future<void> _copyCode(String code) async {
@@ -449,7 +447,6 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                       _StaffRange.today => 'Today',
                       _StaffRange.week => '7 days',
                       _StaffRange.month => 'Month',
-                      _StaffRange.allTime => 'All',
                     },
                   ),
                   selected: _range == range,

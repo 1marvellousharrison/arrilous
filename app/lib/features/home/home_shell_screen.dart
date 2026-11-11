@@ -787,15 +787,17 @@ class _ProfileScreenState extends State<_ProfileScreen> {
                   : const Icon(Icons.chevron_right),
               onTap: _openNotifications,
             ),
-            ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
-            ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
             if (!widget.isStaff && widget.analytics != null)
               ListTile(
                 leading: const Icon(Icons.insights_outlined),
-                title: const Text('Business analysis'),
-                subtitle: const Text('Sales, customers, stock and delivery in one view'),
+                title: const Text('Sales analysis'),
+                subtitle: const Text(
+                  'The whole picture: money, products, customers, stock and delivery',
+                ),
                 onTap: _openAnalytics,
               ),
+            ListTile(leading: const Icon(Icons.inventory_2_outlined), title: const Text('Products'), subtitle: const Text('Catalog, prices and stock'), onTap: widget.onProducts),
+            ListTile(leading: const Icon(Icons.people_outline), title: const Text('Customers'), subtitle: const Text('Customer records and history'), onTap: widget.onCustomers),
             if (!widget.isStaff)
               ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Staff'), subtitle: const Text('Add staff and hand out their codes'), onTap: widget.onStaff),
             ListTile(

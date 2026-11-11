@@ -59,7 +59,12 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+/// The owner's three windows on the shop's sales.
+enum _OwnerRange { today, week, month }
+
 class _DashboardScreenState extends State<DashboardScreen> {
+  _OwnerRange _range = _OwnerRange.today;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +73,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // category, so it is loaded here too — a failure leaves the slide quiet
     // rather than blocking the dashboard.
     if (!widget.catalog.loaded) widget.catalog.load();
+  }
+
+  SalesPeriodTotals _totals(DashboardSummary? summary) {
+    final periods = summary?.periods;
+    if (periods == null) {
+      // Older servers sent only the all-time headline. Keep the card useful
+      // rather than blank while the API catches up.
+      return SalesPeriodTotals(
+        transactionCount: summary?.transactionCount ?? 0,
+        grossSalesKobo: summary?.grossSalesKobo ?? 0,
+        collectedKobo: summary?.collectedKobo ?? 0,
+        outstandingKobo: summary?.outstandingKobo ?? 0,
+      );
+    }
+    return switch (_range) {
+      _OwnerRange.today => periods.today,
+      _OwnerRange.week => periods.week,
+      _OwnerRange.month => periods.month,
+    };
+  }
+
+  String get _rangeLabel => switch (_range) {
+        _OwnerRange.today => 'Today',
+        _OwnerRange.week => 'Last 7 days',
+        _OwnerRange.month => 'This month',
+      };
+
+  bool _hasAttention(DashboardSummary? summary) {
+    if (summary == null) return false;
+    return summary.pendingPayment > 0 ||
+        summary.awaitingDelivery > 0 ||
+        summary.inTransit > 0 ||
+        summary.failed > 0;
   }
 
   @override
@@ -97,6 +135,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _moneyBlock(summary),
               const SizedBox(height: AppSpacing.lg),
               _stateCounts(summary),
+              if (_hasAttention(summary)) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _sectionLabel('Needs attention'),
+                const SizedBox(height: AppSpacing.sm),
+                _attention(summary!),
+              ],
               const SizedBox(height: AppSpacing.xl),
               _sectionLabel('Logistics'),
               const SizedBox(height: AppSpacing.sm),
@@ -386,28 +430,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
+    final totals = _totals(summary);
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              for (final range in _OwnerRange.values)
+                ChoiceChip(
+                  label: Text(
+                    switch (range) {
+                      _OwnerRange.today => 'Today',
+                      _OwnerRange.week => '7 days',
+                      _OwnerRange.month => 'Month',
+                    },
+                  ),
+                  selected: _range == range,
+                  onSelected: (_) => setState(() => _range = range),
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  labelStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
           Text(
-            'Total sales',
+            _rangeLabel,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            formatKobo(summary.grossSalesKobo),
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: theme.colorScheme.primary,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              formatKobo(totals.grossSalesKobo),
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'across ${summary.transactionCount} '
-            '${summary.transactionCount == 1 ? 'transaction' : 'transactions'}',
+            'across ${totals.transactionCount} '
+            '${totals.transactionCount == 1 ? 'transaction' : 'transactions'}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
@@ -418,7 +493,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 child: _MiniStat(
                   label: 'Collected',
-                  value: formatKobo(summary.collectedKobo),
+                  value: formatKobo(totals.collectedKobo),
                   color: AppColors.success,
                 ),
               ),
@@ -426,8 +501,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 child: _MiniStat(
                   label: 'Outstanding',
-                  value: formatKobo(summary.outstandingKobo),
-                  color: summary.outstandingKobo > 0
+                  value: formatKobo(totals.outstandingKobo),
+                  color: totals.outstandingKobo > 0
                       ? AppColors.danger
                       : theme.colorScheme.onSurface,
                 ),
@@ -501,6 +576,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// The owner's short list of things that cannot wait: money still owed,
+  /// deliveries waiting or moving, and anything that failed.
+  Widget _attention(DashboardSummary summary) {
+    final items = <Widget>[
+      if (summary.pendingPayment > 0)
+        _attentionRow(
+          Icons.payments_outlined,
+          'Awaiting payment',
+          summary.pendingPayment,
+          AppColors.danger,
+        ),
+      if (summary.awaitingDelivery > 0)
+        _attentionRow(
+          Icons.inventory_outlined,
+          'To deliver',
+          summary.awaitingDelivery,
+          AppColors.warning,
+        ),
+      if (summary.inTransit > 0)
+        _attentionRow(
+          Icons.local_shipping_outlined,
+          'On the road',
+          summary.inTransit,
+          AppColors.info,
+        ),
+      if (summary.failed > 0)
+        _attentionRow(
+          Icons.error_outline,
+          'Failures',
+          summary.failed,
+          AppColors.danger,
+        ),
+    ];
+
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            items[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _attentionRow(
+    IconData icon,
+    String label,
+    int count,
+    Color color,
+  ) {
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: color, size: 20),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          const Icon(Icons.chevron_right, size: 18),
+        ],
+      ),
+      onTap: widget.onSeeAllTransactions,
+    );
+  }
+
   Widget _recent(DashboardRepository repository, DashboardSummary? summary) {
     if (repository.loading && summary == null) {
       return const AppCard(
@@ -557,8 +715,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       children: [
         // A short preview so the page stays scannable; the full list lives
-        // behind the button below.
-        for (final transaction in recent.take(7))
+        // behind the see-all button.
+        for (final transaction in recent.take(3))
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: AppCard(

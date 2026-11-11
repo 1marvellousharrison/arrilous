@@ -470,7 +470,9 @@ describe('staff accounts — scoped access', () => {
 
     const ownerDash = await api('GET', '/dashboard/summary', { token: owner.token });
     assert.equal(ownerDash.body.staff, undefined, 'the owner does not get a staff block');
-    assert.equal(ownerDash.body.periods, undefined);
+    assert.equal(ownerDash.body.periods.today.transactionCount, 3);
+    assert.equal(ownerDash.body.periods.today.grossSalesKobo, 19_000);
+    assert.equal(ownerDash.body.periods.allTime.grossSalesKobo, 19_000);
   });
 });
 

@@ -133,6 +133,25 @@ describe('phase 12 — dashboard summary', () => {
     assert.equal(body.recent.length, 2);
   });
 
+  test('carries today, week and month windows for the owner', async () => {
+    const owner = await store('Owner Periods');
+    await sell(owner, owner.product);
+    await sell(owner, owner.product, { quantity: 2 });
+
+    const body = await summary(owner);
+    for (const key of ['today', 'week', 'month', 'allTime']) {
+      assert.equal(body.periods[key].transactionCount, 2, `${key} count`);
+      assert.equal(body.periods[key].grossSalesKobo, 4_500_000, `${key} gross`);
+    }
+    assert.equal(body.staff, undefined, 'periods do not make this a staff home');
+
+    // A cancellation disappears from every window, not just the headline.
+    const drop = await sell(owner, owner.product, { quantity: 10 });
+    await setStatus(owner, drop.id, { orderStatus: 'cancelled' });
+    const after = await summary(owner);
+    assert.equal(after.periods.today.grossSalesKobo, 4_500_000);
+  });
+
   test('paid money moves from outstanding to collected', async () => {
     const owner = await store('Paid Store');
     const txn = await sell(owner, owner.product, { quantity: 2 });

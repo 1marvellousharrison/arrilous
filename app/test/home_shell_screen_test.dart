@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dee_app/core/api/api_client.dart';
 import 'package:dee_app/core/state/ai_repository.dart';
+import 'package:dee_app/core/state/analytics_repository.dart';
 import 'package:dee_app/core/state/app_notifications_repository.dart';
 import 'package:dee_app/core/state/auth_repository.dart';
 import 'package:dee_app/core/state/business_repository.dart';
@@ -13,6 +14,7 @@ import 'package:dee_app/core/state/staff_repository.dart';
 import 'package:dee_app/core/state/wallet_repository.dart';
 import 'package:dee_app/core/state/transaction_repository.dart';
 import 'package:dee_app/features/home/home_shell_screen.dart';
+import 'package:dee_app/features/analytics/analytics_screen.dart';
 import 'package:dee_app/features/business/business_edit_gate.dart';
 import 'package:dee_app/features/business/business_setup_flow.dart';
 import 'package:dee_app/features/logistics/delivery_requests_list_screen.dart';
@@ -345,6 +347,29 @@ void main() {
           ],
         });
       }
+      if (request.url.path.endsWith('/analytics/overview')) {
+        return json({
+          'range': {'days': 30},
+          'totals': {
+            'revenueKobo': 0,
+            'orders': 0,
+            'averageOrderKobo': 0,
+            'collectedKobo': 0,
+            'outstandingKobo': 0,
+          },
+          'previous': {
+            'revenueKobo': 0,
+            'orders': 0,
+            'averageOrderKobo': 0,
+            'collectedKobo': 0,
+            'outstandingKobo': 0,
+          },
+          'daily': [
+            {'date': '2026-10-01', 'revenueKobo': 0, 'orders': 0},
+          ],
+          'peakHour': {'hour': 0, 'revenueKobo': 0, 'orders': 0},
+        });
+      }
       return json(<String, Object>{});
     });
 
@@ -364,6 +389,7 @@ void main() {
           customers: CustomerRepository(api, auth),
           transactions: TransactionRepository(api, auth),
           dashboard: DashboardRepository(api, auth),
+          analytics: AnalyticsRepository(api, auth),
           logistics: LogisticsRepository(api, auth),
           wallet: WalletRepository(api, auth),
           staff: StaffRepository(api, auth),
@@ -400,6 +426,21 @@ void main() {
     expect(find.widgetWithText(ListTile, 'Delivery requests'), findsOneWidget);
     expect(find.text('5 total'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget, reason: 'Settings stays on the tab');
+    expect(
+      find.widgetWithText(ListTile, 'Sales analysis'),
+      findsOneWidget,
+      reason: 'the whole sales analysis is reachable from the profile',
+    );
+
+    // The row opens the full analysis page, not a sampled excerpt.
+    await tester.ensureVisible(find.widgetWithText(ListTile, 'Sales analysis'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Sales analysis'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AnalyticsScreen), findsOneWidget);
+    expect(find.text('Business analysis'), findsOneWidget);
+    Navigator.of(tester.element(find.byType(AnalyticsScreen))).pop();
+    await tester.pumpAndSettle();
 
     // Nothing is sampled inline any more: the lists live behind the doorways.
     expect(find.text('Alert 10'), findsNothing);

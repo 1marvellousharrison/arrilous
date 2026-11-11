@@ -255,13 +255,14 @@ void main() {
     await tester.tap(find.text('7 days'));
     await tester.pumpAndSettle();
     expect(find.text('Last 7 days'), findsOneWidget);
-    expect(find.text('₦50,000.00'), findsOneWidget);
     expect(find.text('4 sales'), findsOneWidget);
 
-    await tester.tap(find.text('All'));
+    expect(find.text('All'), findsNothing, reason: 'all-time is no longer offered');
+
+    await tester.tap(find.text('Month'));
     await tester.pumpAndSettle();
-    expect(find.text('₦120,000.00'), findsOneWidget);
-    expect(find.text('8 sales'), findsOneWidget);
+    expect(find.text('This month'), findsOneWidget);
+    expect(find.text('6 sales'), findsOneWidget);
   });
 
   testWidgets('copies the staff code from their home', (tester) async {
